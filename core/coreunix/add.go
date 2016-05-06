@@ -250,7 +250,9 @@ func Add(n *core.IpfsNode, r io.Reader) (string, error) {
 		return "", err
 	}
 
-	node, err := fileAdder.add(r)
+	ar := files.AdvReaderAdapter(r)
+
+	node, err := fileAdder.add(ar)
 	if err != nil {
 		return "", err
 	}
@@ -305,7 +307,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 // Returns the path of the added file ("<dir hash>/filename"), the DAG node of
 // the directory, and and error if any.
 func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, *dag.Node, error) {
-	file := files.NewReaderFile(filename, filename, ioutil.NopCloser(r), nil)
+	file := files.NewReaderFile(filename, filename, filename, ioutil.NopCloser(r), nil)
 	fileAdder, err := NewAdder(n.Context(), n, nil)
 	if err != nil {
 		return "", nil, err
@@ -399,9 +401,9 @@ func (adder *Adder) addFile(file files.File) error {
 	// case for regular file
 	// if the progress flag was specified, wrap the file so that we can send
 	// progress updates to the client (over the output channel)
-	var reader io.Reader = file
+	reader := files.AdvReaderAdapter(file)
 	if adder.Progress {
-		reader = &progressReader{file: file, out: adder.out}
+		reader = &progressReader{reader: reader, filename: file.FileName(), out: adder.out}
 	}
 
 	dagnode, err := adder.add(reader)
@@ -512,23 +514,32 @@ func getOutput(dagnode *dag.Node) (*Object, error) {
 }
 
 type progressReader struct {
-	file         files.File
+	reader       files.AdvReader
+	filename     string
 	out          chan interface{}
 	bytes        int64
 	lastProgress int64
 }
 
 func (i *progressReader) Read(p []byte) (int, error) {
-	n, err := i.file.Read(p)
+	n, err := i.reader.Read(p)
 
 	i.bytes += int64(n)
 	if i.bytes-i.lastProgress >= progressReaderIncrement || err == io.EOF {
 		i.lastProgress = i.bytes
 		i.out <- &AddedObject{
-			Name:  i.file.FileName(),
+			Name:  i.filename,
 			Bytes: i.bytes,
 		}
 	}
 
 	return n, err
+}
+
+func (i *progressReader) ExtraInfo() files.ExtraInfo {
+	return i.reader.ExtraInfo()
+}
+
+func (i *progressReader) SetExtraInfo(info files.ExtraInfo) {
+	i.reader.SetExtraInfo(info)
 }
