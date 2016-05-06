@@ -16,7 +16,7 @@ import (
 	tn "github.com/ipfs/go-ipfs/exchange/bitswap/testnet"
 	mockrouting "github.com/ipfs/go-ipfs/routing/mock"
 	delay "github.com/ipfs/go-ipfs/thirdparty/delay"
-	p2ptestutil "gx/ipfs/QmYgaiNVVL7f2nydijAwpDRunRkmxfu3PoK87Y3pH84uAW/go-libp2p/p2p/test/util"
+	p2ptestutil "gx/ipfs/QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5/go-libp2p/p2p/test/util"
 )
 
 // FIXME the tests are really sensitive to the network delay. fix them to work
@@ -301,6 +301,60 @@ func TestBasicBitswap(t *testing.T) {
 	}
 
 	t.Log(blk)
+	for _, inst := range instances {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDoubleGet(t *testing.T) {
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	sg := NewTestSessionGenerator(net)
+	defer sg.Close()
+	bg := blocksutil.NewBlockGenerator()
+
+	t.Log("Test a one node trying to get one block from another")
+
+	instances := sg.Instances(2)
+	blocks := bg.Blocks(1)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+
+	blkch1, err := instances[1].Exchange.GetBlocks(ctx1, []key.Key{blocks[0].Key()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+
+	blkch2, err := instances[1].Exchange.GetBlocks(ctx2, []key.Key{blocks[0].Key()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ensure both requests make it into the wantlist at the same time
+	time.Sleep(time.Millisecond * 100)
+	cancel1()
+
+	_, ok := <-blkch1
+	if ok {
+		t.Fatal("expected channel to be closed")
+	}
+
+	err = instances[0].Exchange.HasBlock(blocks[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blk, ok := <-blkch2
+	if !ok {
+		t.Fatal("expected to get the block here")
+	}
+	t.Log(blk)
+
 	for _, inst := range instances {
 		err := inst.Exchange.Close()
 		if err != nil {

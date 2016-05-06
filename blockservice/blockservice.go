@@ -12,7 +12,7 @@ import (
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	exchange "github.com/ipfs/go-ipfs/exchange"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	logging "gx/ipfs/Qmazh5oNUVsDZTs2g59rq8aYQqwpss8tcUWQzor5sCCEuH/go-log"
+	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
 )
 
 var log = logging.Logger("blockservice")
@@ -121,6 +121,10 @@ func (s *BlockService) GetBlocks(ctx context.Context, ks []key.Key) <-chan block
 			case <-ctx.Done():
 				return
 			}
+		}
+
+		if len(misses) == 0 {
+			return
 		}
 
 		rblocks, err := s.Exchange.GetBlocks(ctx, misses)

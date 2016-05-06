@@ -2,33 +2,37 @@
   "bugs": {
     "url": "https://github.com/ipfs/go-ipfs"
   },
+  "gx": {
+    "dvcsimport": "github.com/ipfs/go-libp2p",
+    "goversion": "1.5.2"
+  },
   "gxDependencies": [
     {
-      "hash": "Qmazh5oNUVsDZTs2g59rq8aYQqwpss8tcUWQzor5sCCEuH",
+      "hash": "QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8",
       "name": "go-log",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
-      "hash": "QmYgaiNVVL7f2nydijAwpDRunRkmxfu3PoK87Y3pH84uAW",
+      "hash": "QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5",
       "name": "go-libp2p",
-      "version": "3.0.0"
+      "version": "2.0.3"
     },
     {
       "author": "whyrusleeping",
-      "name": "go-libp2p-secio",
       "hash": "QmPKuU1ohMDaJRJHmatXewCqjZp5wKrD3CK6m9TnCK6XBe",
+      "name": "go-libp2p-secio",
       "version": "1.0.1"
     },
     {
       "author": "whyrusleeping",
-      "name": "go-libp2p-crypto",
       "hash": "QmUEUu1CM8bxBJxc3ZLojAi8evhTr4byQogWstABet79oY",
+      "name": "go-libp2p-crypto",
       "version": "1.0.2"
     },
     {
       "author": "whyrusleeping",
-      "name": "go-libp2p-peer",
       "hash": "QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt",
+      "name": "go-libp2p-peer",
       "version": "1.0.2"
     },
     {
@@ -55,13 +59,19 @@
       "hash": "QmdhsRK1EK2fvAz2i2SH5DEfkL6seDuyMYEsxKa9Braim3",
       "name": "client_golang",
       "version": "0.0.0"
+    },
+    {
+      "hash": "QmSx5xkktduyo1hBL7kZxdiZq1P9TrgeGkNW8qtoY14bSk",
+      "name": "iptb",
+      "version": "0.0.0"
+    },
+    {
+      "hash": "QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku",
+      "name": "go-multihash",
+      "version": "0.0.0"
     }
   ],
   "gxVersion": "0.4.0",
-  "gx": {
-    "dvcsimport": "github.com/ipfs/go-libp2p",
-    "goversion":"1.5.2"
-  },
   "language": "go",
   "license": "MIT",
   "name": "go-ipfs",

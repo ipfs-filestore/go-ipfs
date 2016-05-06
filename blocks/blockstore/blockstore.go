@@ -15,7 +15,7 @@ import (
 	"github.com/ipfs/go-ipfs/filestore"
 	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	logging "gx/ipfs/Qmazh5oNUVsDZTs2g59rq8aYQqwpss8tcUWQzor5sCCEuH/go-log"
+	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
 )
 
 var log = logging.Logger("blockstore")
@@ -32,8 +32,8 @@ type Blockstore interface {
 	DeleteBlock(key.Key) error
 	Has(key.Key) (bool, error)
 	Get(key.Key) (blocks.Block, error)
-	Put(block blocks.Block) error
-	PutMany(blocks []blocks.Block) error
+	Put(blocks.Block) error
+	PutMany([]blocks.Block) error
 
 	AllKeysChan(ctx context.Context) (<-chan key.Key, error)
 }
