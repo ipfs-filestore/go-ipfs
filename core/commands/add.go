@@ -160,7 +160,7 @@ You can now refer to the added file in a gateway, like so:
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(req.Context(), n, outChan)
+		fileAdder, err := coreunix.NewAdder(n.DataServices(req.Context()), outChan)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return

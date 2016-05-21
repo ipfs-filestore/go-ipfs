@@ -2,11 +2,11 @@ package coreunix
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
-	"errors"
 	gopath "path"
 
 	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
@@ -68,15 +68,15 @@ type AddedObject struct {
 	Bytes int64  `json:",omitempty"`
 }
 
-func NewAdder(ctx context.Context, n *core.IpfsNode, out chan interface{}) (*Adder, error) {
-	mr, err := mfs.NewRoot(ctx, n.DAG, newDirNode(), nil)
+func NewAdder(n *core.DataServices, out chan interface{}) (*Adder, error) {
+	mr, err := mfs.NewRoot(n.Context, n.DAG, newDirNode(), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Adder{
 		mr:       mr,
-		ctx:      ctx,
+		ctx:      n.Context,
 		node:     n,
 		out:      out,
 		Progress: false,
@@ -91,7 +91,7 @@ func NewAdder(ctx context.Context, n *core.IpfsNode, out chan interface{}) (*Add
 // Internal structure for holding the switches passed to the `add` call
 type Adder struct {
 	ctx      context.Context
-	node     *core.IpfsNode
+	node     *core.DataServices
 	out      chan interface{}
 	Progress bool
 	Hidden   bool
@@ -259,10 +259,10 @@ func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
 
 // Add builds a merkledag from the a reader, pinning all objects to the local
 // datastore. Returns a key representing the root node.
-func Add(n *core.IpfsNode, r io.Reader) (string, error) {
+func Add(n *core.DataServices, r io.Reader) (string, error) {
 	defer n.Blockstore.PinLock().Unlock()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n, nil)
 	if err != nil {
 		return "", err
 	}
@@ -282,7 +282,7 @@ func Add(n *core.IpfsNode, r io.Reader) (string, error) {
 }
 
 // AddR recursively adds files in |path|.
-func AddR(n *core.IpfsNode, root string) (key string, err error) {
+func AddR(n *core.DataServices, root string) (key string, err error) {
 	n.Blockstore.PinLock().Unlock()
 
 	stat, err := os.Lstat(root)
@@ -296,7 +296,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 	}
 	defer f.Close()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n, nil)
 	if err != nil {
 		return "", err
 	}
@@ -323,9 +323,9 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 // to preserve the filename.
 // Returns the path of the added file ("<dir hash>/filename"), the DAG node of
 // the directory, and and error if any.
-func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, *dag.Node, error) {
+func AddWrapped(n *core.DataServices, r io.Reader, filename string) (string, *dag.Node, error) {
 	file := files.NewReaderFile(filename, filename, ioutil.NopCloser(r), nil)
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n, nil)
 	if err != nil {
 		return "", nil, err
 	}

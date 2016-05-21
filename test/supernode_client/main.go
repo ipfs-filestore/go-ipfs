@@ -153,7 +153,7 @@ func runFileAddingWorker(n *core.IpfsNode) error {
 					errs <- err
 				}
 			}()
-			k, err := coreunix.Add(n, piper)
+			k, err := coreunix.Add(n.DataServices(nil), piper)
 			if err != nil {
 				errs <- err
 			}
@@ -201,7 +201,7 @@ func runFileCattingWorker(ctx context.Context, n *core.IpfsNode) error {
 				errs <- err
 			}
 			// add to a dummy node to discover the key
-			k, err := coreunix.Add(dummy, bytes.NewReader(buf.Bytes()))
+			k, err := coreunix.Add(dummy.DataServices(nil), bytes.NewReader(buf.Bytes()))
 			if err != nil {
 				errs <- err
 			}

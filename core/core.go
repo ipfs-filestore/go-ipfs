@@ -622,3 +622,17 @@ type DiscoveryOption func(p2phost.Host) (discovery.Service, error)
 
 var DHTOption RoutingOption = constructDHTRouting
 var NilRouterOption RoutingOption = nilrouting.ConstructNilRouting
+
+func (n *IpfsNode) DataServices(ctx context.Context) *DataServices {
+	if ctx == nil {
+		ctx = n.Context()
+	}
+	return &DataServices{ctx, n.Pinning, n.Blockstore, n.DAG}
+}
+
+type DataServices struct {
+	Context    context.Context
+	Pinning    pin.Pinner
+	Blockstore bstore.GCBlockstore
+	DAG        merkledag.DAGService
+}

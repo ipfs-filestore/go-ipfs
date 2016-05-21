@@ -163,7 +163,6 @@ func (w *chanWriterByFile) Read(p []byte) (int, error) {
 	return sz, nil
 }
 
-
 var verifyFileStore = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Verify objects in filestore",
