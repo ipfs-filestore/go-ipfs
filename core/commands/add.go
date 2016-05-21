@@ -9,11 +9,14 @@ import (
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/cheggaaa/pb"
 	"github.com/ipfs/go-ipfs/core/coreunix"
 	"github.com/ipfs/go-ipfs/filestore"
+	"github.com/ipfs/go-ipfs/filestore/support"
 
+	bserv "github.com/ipfs/go-ipfs/blockservice"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	cli "github.com/ipfs/go-ipfs/commands/cli"
 	files "github.com/ipfs/go-ipfs/commands/files"
 	core "github.com/ipfs/go-ipfs/core"
+	dag "github.com/ipfs/go-ipfs/merkledag"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 )
 
@@ -160,7 +163,14 @@ You can now refer to the added file in a gateway, like so:
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(n.DataServices(req.Context()), outChan)
+		ds := n.DataServices(req.Context())
+		if nocopy || link {
+			ds.Blockstore = filestore_support.NewBlockstore(ds.Blockstore, n.Repo.Datastore())
+			blockService := bserv.New(ds.Blockstore, n.Exchange)
+			ds.DAG = dag.NewDAGService(blockService)
+		}
+
+		fileAdder, err := coreunix.NewAdder(ds, outChan)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
