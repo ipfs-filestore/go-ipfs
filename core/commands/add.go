@@ -8,7 +8,6 @@ import (
 
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/cheggaaa/pb"
 	"github.com/ipfs/go-ipfs/core/coreunix"
-	"github.com/ipfs/go-ipfs/filestore"
 	"github.com/ipfs/go-ipfs/filestore/support"
 
 	bserv "github.com/ipfs/go-ipfs/blockservice"
@@ -168,6 +167,7 @@ You can now refer to the added file in a gateway, like so:
 			blockstore := filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore())
 			blockService := bserv.New(blockstore, n.Exchange)
 			dagService := dag.NewDAGService(blockService)
+			dagService.NodeToBlock = filestore_support.NodeToBlock{}
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
 		} else {
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
@@ -186,13 +186,6 @@ You can now refer to the added file in a gateway, like so:
 		fileAdder.Wrap = wrap
 		fileAdder.Pin = dopin
 		fileAdder.Silent = silent
-
-		if nocopy {
-			fileAdder.AddOpts = filestore.AddNoCopy
-		}
-		if link {
-			fileAdder.AddOpts = filestore.AddLink
-		}
 
 		addAllAndPin := func(f files.File) error {
 			// Iterate over each top-level file and add individually. Otherwise the
