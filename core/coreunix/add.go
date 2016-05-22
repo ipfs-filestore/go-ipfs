@@ -2,7 +2,7 @@ package coreunix
 
 import (
 	"bytes"
-	"errors"
+	//"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -104,28 +104,10 @@ type Adder struct {
 	mr       *mfs.Root
 	unlocker bs.Unlocker
 	tempRoot key.Key
-	AddOpts  interface{}
 }
 
 // Perform the actual add & pin locally, outputting results to reader
 func (adder Adder) add(reader files.AdvReader) (*dag.Node, error) {
-	if adder.AddOpts != nil {
-		info := reader.ExtraInfo()
-		if info == nil {
-			return nil, errors.New("Reader does not support ExtraInfo.")
-		}
-		// We need to get the ModTime before any part of the
-		// file is read to catch the case when the file is
-		// modified as we are reading it
-		fileInfo, err := os.Stat(info.AbsPath())
-		if err != nil {
-			return nil, err
-		}
-		err = reader.SetExtraInfo(files.InfoForFilestore{info, adder.AddOpts, fileInfo.ModTime()})
-		if err != nil {
-			return nil, err
-		}
-	}
 	chnk, err := chunk.FromString(reader, adder.Chunker)
 	if err != nil {
 		return nil, err
@@ -553,10 +535,6 @@ func (i *progressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (i *progressReader) ExtraInfo() files.ExtraInfo {
-	return i.reader.ExtraInfo()
-}
-
-func (i *progressReader) SetExtraInfo(info files.ExtraInfo) error {
-	return i.reader.SetExtraInfo(info)
+func (i *progressReader) PosInfo() *files.PosInfo {
+	return i.reader.PosInfo()
 }
