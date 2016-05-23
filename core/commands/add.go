@@ -183,7 +183,6 @@ You can now refer to the added file in a gateway, like so:
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		
 
 		fileAdder.Out = outChan
 		fileAdder.Chunker = chunker
