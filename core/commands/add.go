@@ -8,6 +8,7 @@ import (
 
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/cheggaaa/pb"
 	"github.com/ipfs/go-ipfs/core/coreunix"
+	"github.com/ipfs/go-ipfs/filestore"
 	"github.com/ipfs/go-ipfs/filestore/support"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 
@@ -165,12 +166,11 @@ You can now refer to the added file in a gateway, like so:
 
 		ds := n.DataServices(req.Context())
 		if nocopy || link {
-			repo, ok := n.Repo.Self().(*fsrepo.FSRepo)
+			fs, ok := n.Repo.SubDatastore(fsrepo.RepoFilestore).(*filestore.Datastore)
 			if !ok {
-				err = errors.New("Not a FSRepo")
+				res.SetError(errors.New("Could not extract filestore"), cmds.ErrNormal)
 				return
 			}
-			fs := repo.Filestore()
 			ds.Blockstore = filestore_support.NewBlockstore(ds.Blockstore, n.Repo.Datastore(), fs)
 			blockService := bserv.New(ds.Blockstore, n.Exchange)
 			dagService := dag.NewDAGService(blockService)
