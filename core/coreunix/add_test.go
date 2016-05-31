@@ -54,7 +54,8 @@ func TestAddGCLive(t *testing.T) {
 
 	errs := make(chan error)
 	out := make(chan interface{})
-	adder, err := NewAdder(context.Background(), node, out)
+	adder, err := NewAdder(context.Background(), node.Pinning, node.Blockstore, node.DAG)
+	adder.Out = out
 	if err != nil {
 		t.Fatal(err)
 	}

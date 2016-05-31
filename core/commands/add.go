@@ -164,34 +164,27 @@ You can now refer to the added file in a gateway, like so:
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(req.Context(), nil, outChan)
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-
-		fileAdder.Pinning = n.Pinning
+		var fileAdder *coreunix.Adder
 		if nocopy || link {
 			fs, ok := n.Repo.SubDatastore(fsrepo.RepoFilestore).(*filestore.Datastore)
 			if !ok {
 				res.SetError(errors.New("Could not extract filestore"), cmds.ErrNormal)
 				return
 			}
-			fileAdder.Blockstore = filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore(), fs)
-			blockService := bserv.New(fileAdder.Blockstore, n.Exchange)
+			blockstore := filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore(), fs)
+			blockService := bserv.New(blockstore, n.Exchange)
 			dagService := dag.NewDAGService(blockService)
 			dagService.NodeToBlock = filestore_support.NodeToBlock{}
-			fileAdder.DAG = dagService
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
 		} else {
-			fileAdder.Blockstore = n.Blockstore
-			fileAdder.DAG = n.DAG
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
 		}
-		err = fileAdder.FinishInit()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
 
+		fileAdder.Out = outChan
 		fileAdder.Chunker = chunker
 		fileAdder.Progress = progress
 		fileAdder.Hidden = hidden

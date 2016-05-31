@@ -67,48 +67,35 @@ type AddedObject struct {
 	Bytes int64  `json:",omitempty"`
 }
 
-func NewAdder(ctx context.Context, n *core.IpfsNode, out chan interface{}) (*Adder, error) {
-	adder := &Adder{
+func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.DAGService) (*Adder, error) {
+	mr, err := mfs.NewRoot(ctx, ds, newDirNode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &Adder{
+		mr: mr,
 		ctx:        ctx,
-		out:        out,
+		Pinning:    p,
+		Blockstore: bs,
+		DAG:        ds,
 		Progress:   false,
 		Hidden:     true,
 		Pin:        true,
 		Trickle:    false,
 		Wrap:       false,
 		Chunker:    "",
-	}
+	}, nil
 
-	
-	if n != nil {
-		adder.Pinning = n.Pinning
-		adder.Blockstore = n.Blockstore
-		adder.DAG = n.DAG
-		err := adder.FinishInit()
-		if err != nil {
-			return nil, err
-		}		
-	}
-
-	return adder, nil
-}
-
-func (adder *Adder) FinishInit() error {
-	mr, err := mfs.NewRoot(adder.ctx, adder.DAG, newDirNode(), nil)
-	if err != nil {
-		return err
-	}
-	adder.mr = mr
-	return nil
 }
 
 // Internal structure for holding the switches passed to the `add` call
 type Adder struct {
-	ctx context.Context
+	ctx        context.Context
 	Pinning    pin.Pinner
 	Blockstore bstore.GCBlockstore
 	DAG        dag.DAGService
-	out        chan interface{}
+	Out        chan interface{}
 	Progress   bool
 	Hidden     bool
 	Pin        bool
@@ -252,7 +239,7 @@ func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
 		}
 	}
 
-	return outputDagnode(adder.out, path, nd)
+	return outputDagnode(adder.Out, path, nd)
 }
 
 // Add builds a merkledag from the a reader, pinning all objects to the local
@@ -260,7 +247,7 @@ func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
 func Add(n *core.IpfsNode, r io.Reader) (string, error) {
 	defer n.Blockstore.PinLock().Unlock()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
@@ -292,7 +279,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 	}
 	defer f.Close()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
@@ -321,7 +308,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 // the directory, and and error if any.
 func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, *dag.Node, error) {
 	file := files.NewReaderFile(filename, filename, ioutil.NopCloser(r), nil)
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", nil, err
 	}
@@ -370,7 +357,7 @@ func (adder *Adder) addNode(node *dag.Node, path string) error {
 	}
 
 	if !adder.Silent {
-		return outputDagnode(adder.out, path, node)
+		return outputDagnode(adder.Out, path, node)
 	}
 	return nil
 }
@@ -416,7 +403,7 @@ func (adder *Adder) addFile(file files.File) error {
 	// progress updates to the client (over the output channel)
 	var reader io.Reader = file
 	if adder.Progress {
-		rdr := &progressReader{file: file, out: adder.out}
+		rdr := &progressReader{file: file, out: adder.Out}
 		if fi, ok := file.(files.FileInfo); ok {
 			reader = &progressReader2{rdr, fi}
 		} else {
