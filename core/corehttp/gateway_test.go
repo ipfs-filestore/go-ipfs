@@ -112,7 +112,7 @@ func TestGatewayGet(t *testing.T) {
 	ts, n := newTestServerAndNode(t, ns)
 	defer ts.Close()
 
-	k, err := coreunix.Add(n.DataServices(nil), strings.NewReader("fnord"))
+	k, err := coreunix.Add(n, strings.NewReader("fnord"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +168,11 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	defer ts.Close()
 
 	// create /ipns/example.net/foo/index.html
-	_, dagn1, err := coreunix.AddWrapped(n.DataServices(nil), strings.NewReader("_"), "_")
+	_, dagn1, err := coreunix.AddWrapped(n, strings.NewReader("_"), "_")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, dagn2, err := coreunix.AddWrapped(n.DataServices(nil), strings.NewReader("_"), "index.html")
+	_, dagn2, err := coreunix.AddWrapped(n, strings.NewReader("_"), "index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,15 +253,15 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	defer ts.Close()
 
 	// create /ipns/example.net/foo/
-	_, dagn1, err := coreunix.AddWrapped(n.DataServices(nil), strings.NewReader("1"), "file.txt")
+	_, dagn1, err := coreunix.AddWrapped(n, strings.NewReader("1"), "file.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, dagn2, err := coreunix.AddWrapped(n.DataServices(nil), strings.NewReader("2"), "file.txt")
+	_, dagn2, err := coreunix.AddWrapped(n, strings.NewReader("2"), "file.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, dagn3, err := coreunix.AddWrapped(n.DataServices(nil), strings.NewReader("3"), "file.txt")
+	_, dagn3, err := coreunix.AddWrapped(n, strings.NewReader("3"), "file.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

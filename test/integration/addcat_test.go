@@ -133,7 +133,7 @@ func DirectAddCat(data []byte, conf testutil.LatencyConfig) error {
 		return err
 	}
 
-	added, err := coreunix.Add(adder.DataServices(nil), bytes.NewReader(data))
+	added, err := coreunix.Add(adder, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

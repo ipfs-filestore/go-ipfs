@@ -130,7 +130,7 @@ func run(ipfsPath, watchPath string) error {
 						log.Println(err)
 					}
 					defer file.Close()
-					k, err := coreunix.Add(node.DataServices(nil), file)
+					k, err := coreunix.Add(node, file)
 					if err != nil {
 						log.Println(err)
 					}

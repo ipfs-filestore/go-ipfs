@@ -47,7 +47,7 @@ func addAssetList(nd *core.IpfsNode, l []string) (*key.Key, error) {
 			return nil, fmt.Errorf("assets: could load Asset '%s': %s", p, err)
 		}
 
-		s, err := coreunix.Add(nd.DataServices(nil), bytes.NewBuffer(d))
+		s, err := coreunix.Add(nd, bytes.NewBuffer(d))
 		if err != nil {
 			return nil, fmt.Errorf("assets: could not Add '%s': %s", p, err)
 		}

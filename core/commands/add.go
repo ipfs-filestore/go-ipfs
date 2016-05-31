@@ -164,25 +164,34 @@ You can now refer to the added file in a gateway, like so:
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		ds := n.DataServices(req.Context())
+		fileAdder, err := coreunix.NewAdder(req.Context(), nil, outChan)
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+
+		fileAdder.Pinning = n.Pinning
 		if nocopy || link {
 			fs, ok := n.Repo.SubDatastore(fsrepo.RepoFilestore).(*filestore.Datastore)
 			if !ok {
 				res.SetError(errors.New("Could not extract filestore"), cmds.ErrNormal)
 				return
 			}
-			ds.Blockstore = filestore_support.NewBlockstore(ds.Blockstore, n.Repo.Datastore(), fs)
-			blockService := bserv.New(ds.Blockstore, n.Exchange)
+			fileAdder.Blockstore = filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore(), fs)
+			blockService := bserv.New(fileAdder.Blockstore, n.Exchange)
 			dagService := dag.NewDAGService(blockService)
 			dagService.NodeToBlock = filestore_support.NodeToBlock{}
-			ds.DAG = dagService
+			fileAdder.DAG = dagService
+		} else {
+			fileAdder.Blockstore = n.Blockstore
+			fileAdder.DAG = n.DAG
 		}
-
-		fileAdder, err := coreunix.NewAdder(ds, outChan)
+		err = fileAdder.FinishInit()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
+
 		fileAdder.Chunker = chunker
 		fileAdder.Progress = progress
 		fileAdder.Hidden = hidden

@@ -31,7 +31,7 @@ func TestAddRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if k, err := AddR(node.DataServices(nil), "test_data"); err != nil {
+	if k, err := AddR(node, "test_data"); err != nil {
 		t.Fatal(err)
 	} else if k != "QmWCCga8AbTyfAQ7pTnGT6JgmRMAB3Qp8ZmTEFi5q5o8jC" {
 		t.Fatal("keys do not match: ", k)
@@ -54,7 +54,7 @@ func TestAddGCLive(t *testing.T) {
 
 	errs := make(chan error)
 	out := make(chan interface{})
-	adder, err := NewAdder(node.DataServices(context.Background()), out)
+	adder, err := NewAdder(context.Background(), node, out)
 	if err != nil {
 		t.Fatal(err)
 	}
