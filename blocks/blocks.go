@@ -25,20 +25,6 @@ type BasicBlock struct {
 	data      []byte
 }
 
-type FilestoreBlock struct {
-	BasicBlock
-	*DataPtr
-	AddOpts interface{}
-}
-
-// This DataPtr had different AltData than the node DataPtr
-type DataPtr struct {
-	AltData  []byte
-	FilePath string
-	Offset   uint64
-	Size     uint64
-}
-
 // NewBlock creates a Block object from opaque data. It will hash the data.
 func NewBlock(data []byte) *BasicBlock {
 	return &BasicBlock{data: data, multihash: u.Hash(data)}

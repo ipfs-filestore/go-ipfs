@@ -5,38 +5,38 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	//"runtime/debug"
+	//"bytes"
+	//"time"
 
 	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore/query"
 	k "github.com/ipfs/go-ipfs/blocks/key"
 	//mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
+	b58 "gx/ipfs/QmT8rehPR3F6bmwL6zjUN8XpiDBFFpMP2myPdC6ApsWfJf/go-base58"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
+)
+
+var log = logging.Logger("filestore")
+
+const (
+	VerifyNever     = 0
+	VerifyIfChanged = 1
+	VerifyAlways    = 2
 )
 
 type Datastore struct {
-	ds           ds.Datastore
-	alwaysVerify bool
+	ds     ds.Datastore
+	verify int
 }
 
-func New(d ds.Datastore, fileStorePath string) (*Datastore, error) {
-	return &Datastore{d, true}, nil
+func New(d ds.Datastore, fileStorePath string, verify int) (*Datastore, error) {
+	return &Datastore{d, verify}, nil
 }
 
 func (d *Datastore) Put(key ds.Key, value interface{}) (err error) {
-	val, ok := value.(*DataWOpts)
-	if !ok {
-		panic(ds.ErrInvalidType)
-	}
-
-	addType, ok := val.AddOpts.(int)
-	if !ok {
-		panic(ds.ErrInvalidType)
-	}
-	if addType != AddNoCopy {
-		return errors.New("Only \"no-copy\" mode supported for now.")
-	}
-
-	dataObj, ok := val.DataObj.(*DataObj)
+	dataObj, ok := value.(*DataObj)
 	if !ok {
 		panic(ds.ErrInvalidType)
 	}
@@ -53,23 +53,28 @@ func (d *Datastore) Put(key ds.Key, value interface{}) (err error) {
 	}
 
 	// See if we have the whole file in the block
-	if dataObj.Offset == 0 && !dataObj.WholeFile {
+	if dataObj.Offset == 0 && !dataObj.WholeFile() {
 		// Get the file size
 		info, err := file.Stat()
 		if err != nil {
 			return err
 		}
 		if dataObj.Size == uint64(info.Size()) {
-			dataObj.WholeFile = true
+			dataObj.Flags |= WholeFile
 		}
 	}
 
 	file.Close()
 
+	return d.put(key, dataObj)
+}
+
+func (d *Datastore) put(key ds.Key, dataObj *DataObj) (err error) {
 	data, err := dataObj.Marshal()
 	if err != nil {
 		return err
 	}
+	log.Debugf("adding block %s\n", b58.Encode(key.Bytes()[1:]))
 	return d.ds.Put(key, data)
 }
 
@@ -82,7 +87,7 @@ func (d *Datastore) Get(key ds.Key) (value interface{}, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.GetData(key, val, d.alwaysVerify)
+	return d.GetData(key, val, d.verify, true)
 }
 
 // Get the key as a DataObj
@@ -110,11 +115,16 @@ func (e InvalidBlock) Error() string {
 	return "Datastore: Block Verification Failed"
 }
 
+const useFastReconstruct = true
+
 // Get the orignal data out of the DataObj
-func (d *Datastore) GetData(key ds.Key, val *DataObj, verify bool) ([]byte, error) {
+func (d *Datastore) GetData(key ds.Key, val *DataObj, verify int, update bool) ([]byte, error) {
 	if val == nil {
 		return nil, errors.New("Nil DataObj")
-	} else if val.NoBlockData {
+	} else if val.NoBlockData() {
+		if verify != VerifyIfChanged {
+			update = false
+		}
 		file, err := os.Open(val.FilePath)
 		if err != nil {
 			return nil, err
@@ -123,22 +133,55 @@ func (d *Datastore) GetData(key ds.Key, val *DataObj, verify bool) ([]byte, erro
 		if err != nil {
 			return nil, err
 		}
-		buf := make([]byte, val.Size)
-		_, err = io.ReadFull(file, buf)
-		if err != nil {
-			return nil, err
-		}
-		data, err := reconstruct(val.Data, buf)
-		if err != nil {
-			return nil, err
-		}
-		if verify {
-			newKey := k.Key(u.Hash(data)).DsKey()
-			if newKey != key {
-				return nil, InvalidBlock{}
+		var data []byte
+		if useFastReconstruct {
+			data, err = reconstructDirect(val.Data, file, val.Size)
+		} else {
+			buf := make([]byte, val.Size)
+			_, err = io.ReadFull(file, buf)
+			if err != nil {
+				return nil, err
 			}
+			data, err = reconstruct(val.Data, buf)
 		}
-		return data, nil
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return nil, err
+		}
+		modtime := val.ModTime
+		if update || verify == VerifyIfChanged {
+			fileInfo, err := file.Stat()
+			if err != nil {
+				return nil, err
+			}
+			modtime = FromTime(fileInfo.ModTime())
+		}
+		if err != nil {
+			log.Debugf("invalid block: %s: %s\n", b58.Encode(key.Bytes()[1:]), err.Error())
+		}
+		invalid := val.Invalid() || err != nil
+		if err == nil && (verify == VerifyAlways || (verify == VerifyIfChanged && modtime != val.ModTime)) {
+			log.Debugf("verifying block %s\n", b58.Encode(key.Bytes()[1:]))
+			newKey := k.Key(u.Hash(data)).DsKey()
+			invalid = newKey != key
+		}
+		if update && (invalid != val.Invalid() || modtime != val.ModTime) {
+			log.Debugf("updating block %s\n", b58.Encode(key.Bytes()[1:]))
+			newVal := *val
+			newVal.SetInvalid(invalid)
+			newVal.ModTime = modtime
+			// ignore errors as they are nonfatal
+			_ = d.put(key, &newVal)
+		}
+		if invalid {
+			if err != nil {
+				log.Debugf("invalid block %s: %s\n", b58.Encode(key.Bytes()[1:]), err.Error())
+			} else {
+				log.Debugf("invalid block %s\n", b58.Encode(key.Bytes()[1:]))
+			}
+			return nil, InvalidBlock{}
+		} else {
+			return data, nil
+		}
 	} else {
 		return val.Data, nil
 	}

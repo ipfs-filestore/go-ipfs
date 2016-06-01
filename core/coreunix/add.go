@@ -67,53 +67,50 @@ type AddedObject struct {
 	Bytes int64  `json:",omitempty"`
 }
 
-func NewAdder(ctx context.Context, n *core.IpfsNode, out chan interface{}) (*Adder, error) {
-	mr, err := mfs.NewRoot(ctx, n.DAG, newDirNode(), nil)
+func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.DAGService) (*Adder, error) {
+	mr, err := mfs.NewRoot(ctx, ds, newDirNode(), nil)
 	if err != nil {
 		return nil, err
 	}
-
+	
 	return &Adder{
-		mr:       mr,
-		ctx:      ctx,
-		node:     n,
-		out:      out,
-		Progress: false,
-		Hidden:   true,
-		Pin:      true,
-		Trickle:  false,
-		Wrap:     false,
-		Chunker:  "",
+		mr: mr,
+		ctx:        ctx,
+		Pinning:    p,
+		Blockstore: bs,
+		DAG:        ds,
+		Progress:   false,
+		Hidden:     true,
+		Pin:        true,
+		Trickle:    false,
+		Wrap:       false,
+		Chunker:    "",
 	}, nil
+
 }
 
 // Internal structure for holding the switches passed to the `add` call
 type Adder struct {
-	ctx      context.Context
-	node     *core.IpfsNode
-	out      chan interface{}
-	Progress bool
-	Hidden   bool
-	Pin      bool
-	Trickle  bool
-	Silent   bool
-	Wrap     bool
-	Chunker  string
-	root     *dag.Node
-	mr       *mfs.Root
-	unlocker bs.Unlocker
-	tempRoot key.Key
-	AddOpts  interface{}
+	ctx        context.Context
+	Pinning    pin.Pinner
+	Blockstore bstore.GCBlockstore
+	DAG        dag.DAGService
+	Out        chan interface{}
+	Progress   bool
+	Hidden     bool
+	Pin        bool
+	Trickle    bool
+	Silent     bool
+	Wrap       bool
+	Chunker    string
+	root       *dag.Node
+	mr         *mfs.Root
+	unlocker   bs.Unlocker
+	tempRoot   key.Key
 }
 
 // Perform the actual add & pin locally, outputting results to reader
-func (adder Adder) add(reader files.AdvReader) (*dag.Node, error) {
-	if adder.AddOpts != nil {
-		err := reader.SetExtraInfo(files.PosInfoWaddOpts{reader.ExtraInfo(), adder.AddOpts})
-		if err != nil {
-			return nil, err
-		}
-	}
+func (adder Adder) add(reader io.Reader) (*dag.Node, error) {
 	chnk, err := chunk.FromString(reader, adder.Chunker)
 	if err != nil {
 		return nil, err
@@ -121,11 +118,11 @@ func (adder Adder) add(reader files.AdvReader) (*dag.Node, error) {
 
 	if adder.Trickle {
 		return importer.BuildTrickleDagFromReader(
-			adder.node.DAG,
+			adder.DAG,
 			chnk)
 	}
 	return importer.BuildDagFromReader(
-		adder.node.DAG,
+		adder.DAG,
 		chnk)
 }
 
@@ -142,7 +139,7 @@ func (adder *Adder) RootNode() (*dag.Node, error) {
 
 	// if not wrapping, AND one root file, use that hash as root.
 	if !adder.Wrap && len(root.Links) == 1 {
-		root, err = root.Links[0].GetNode(adder.ctx, adder.node.DAG)
+		root, err = root.Links[0].GetNode(adder.ctx, adder.DAG)
 		if err != nil {
 			return nil, err
 		}
@@ -161,21 +158,21 @@ func (adder *Adder) PinRoot() error {
 		return nil
 	}
 
-	rnk, err := adder.node.DAG.Add(root)
+	rnk, err := adder.DAG.Add(root)
 	if err != nil {
 		return err
 	}
 
 	if adder.tempRoot != "" {
-		err := adder.node.Pinning.Unpin(adder.ctx, adder.tempRoot, true)
+		err := adder.Pinning.Unpin(adder.ctx, adder.tempRoot, true)
 		if err != nil {
 			return err
 		}
 		adder.tempRoot = rnk
 	}
 
-	adder.node.Pinning.PinWithMode(rnk, pin.Recursive)
-	return adder.node.Pinning.Flush()
+	adder.Pinning.PinWithMode(rnk, pin.Recursive)
+	return adder.Pinning.Flush()
 }
 
 func (adder *Adder) Finalize() (*dag.Node, error) {
@@ -242,7 +239,7 @@ func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
 		}
 	}
 
-	return outputDagnode(adder.out, path, nd)
+	return outputDagnode(adder.Out, path, nd)
 }
 
 // Add builds a merkledag from the a reader, pinning all objects to the local
@@ -250,14 +247,12 @@ func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
 func Add(n *core.IpfsNode, r io.Reader) (string, error) {
 	defer n.Blockstore.PinLock().Unlock()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
 
-	ar := files.AdvReaderAdapter(r)
-
-	node, err := fileAdder.add(ar)
+	node, err := fileAdder.add(r)
 	if err != nil {
 		return "", err
 	}
@@ -284,7 +279,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 	}
 	defer f.Close()
 
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
@@ -312,8 +307,8 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 // Returns the path of the added file ("<dir hash>/filename"), the DAG node of
 // the directory, and and error if any.
 func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, *dag.Node, error) {
-	file := files.NewReaderFile(filename, filename, filename, ioutil.NopCloser(r), nil)
-	fileAdder, err := NewAdder(n.Context(), n, nil)
+	file := files.NewReaderFile(filename, filename, ioutil.NopCloser(r), nil)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", nil, err
 	}
@@ -362,14 +357,14 @@ func (adder *Adder) addNode(node *dag.Node, path string) error {
 	}
 
 	if !adder.Silent {
-		return outputDagnode(adder.out, path, node)
+		return outputDagnode(adder.Out, path, node)
 	}
 	return nil
 }
 
 // Add the given file while respecting the adder.
 func (adder *Adder) AddFile(file files.File) error {
-	adder.unlocker = adder.node.Blockstore.PinLock()
+	adder.unlocker = adder.Blockstore.PinLock()
 	defer func() {
 		adder.unlocker.Unlock()
 	}()
@@ -395,7 +390,7 @@ func (adder *Adder) addFile(file files.File) error {
 		}
 
 		dagnode := &dag.Node{Data: sdata}
-		_, err = adder.node.DAG.Add(dagnode)
+		_, err = adder.DAG.Add(dagnode)
 		if err != nil {
 			return err
 		}
@@ -406,9 +401,14 @@ func (adder *Adder) addFile(file files.File) error {
 	// case for regular file
 	// if the progress flag was specified, wrap the file so that we can send
 	// progress updates to the client (over the output channel)
-	reader := files.AdvReaderAdapter(file)
+	var reader io.Reader = file
 	if adder.Progress {
-		reader = &progressReader{reader: reader, filename: file.FileName(), out: adder.out}
+		rdr := &progressReader{file: file, out: adder.Out}
+		if fi, ok := file.(files.FileInfo); ok {
+			reader = &progressReader2{rdr, fi}
+		} else {
+			reader = rdr
+		}
 	}
 
 	dagnode, err := adder.add(reader)
@@ -452,14 +452,14 @@ func (adder *Adder) addDir(dir files.File) error {
 }
 
 func (adder *Adder) maybePauseForGC() error {
-	if adder.node.Blockstore.GCRequested() {
+	if adder.Blockstore.GCRequested() {
 		err := adder.PinRoot()
 		if err != nil {
 			return err
 		}
 
 		adder.unlocker.Unlock()
-		adder.unlocker = adder.node.Blockstore.PinLock()
+		adder.unlocker = adder.Blockstore.PinLock()
 	}
 	return nil
 }
@@ -519,21 +519,20 @@ func getOutput(dagnode *dag.Node) (*Object, error) {
 }
 
 type progressReader struct {
-	reader       files.AdvReader
-	filename     string
+	file         files.File
 	out          chan interface{}
 	bytes        int64
 	lastProgress int64
 }
 
 func (i *progressReader) Read(p []byte) (int, error) {
-	n, err := i.reader.Read(p)
+	n, err := i.file.Read(p)
 
 	i.bytes += int64(n)
 	if i.bytes-i.lastProgress >= progressReaderIncrement || err == io.EOF {
 		i.lastProgress = i.bytes
 		i.out <- &AddedObject{
-			Name:  i.filename,
+			Name:  i.file.FileName(),
 			Bytes: i.bytes,
 		}
 	}
@@ -541,10 +540,7 @@ func (i *progressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (i *progressReader) ExtraInfo() files.ExtraInfo {
-	return i.reader.ExtraInfo()
-}
-
-func (i *progressReader) SetExtraInfo(info files.ExtraInfo) error {
-	return i.reader.SetExtraInfo(info)
+type progressReader2 struct {
+	*progressReader
+	files.FileInfo
 }

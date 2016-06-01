@@ -6,6 +6,7 @@ import (
 	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 
 	key "github.com/ipfs/go-ipfs/blocks/key"
+	"github.com/ipfs/go-ipfs/commands/files"
 	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
 )
 
@@ -26,10 +27,9 @@ type Node struct {
 }
 
 type DataPtr struct {
-	AltData  []byte
-	FilePath string
-	Offset   uint64
-	Size     uint64
+	AltData []byte
+	*files.PosInfo
+	Size uint64
 }
 
 // NodeStat is a statistics object for a Node. Mostly sizes.

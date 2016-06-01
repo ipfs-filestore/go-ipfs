@@ -54,22 +54,23 @@ func TestAddGCLive(t *testing.T) {
 
 	errs := make(chan error)
 	out := make(chan interface{})
-	adder, err := NewAdder(context.Background(), node, out)
+	adder, err := NewAdder(context.Background(), node.Pinning, node.Blockstore, node.DAG)
+	adder.Out = out
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dataa := ioutil.NopCloser(bytes.NewBufferString("testfileA"))
-	rfa := files.NewReaderFile("a", "a", "a", dataa, nil)
+	rfa := files.NewReaderFile("a", "a", dataa, nil)
 
 	// make two files with pipes so we can 'pause' the add for timing of the test
 	piper, pipew := io.Pipe()
-	hangfile := files.NewReaderFile("b", "b", "b", piper, nil)
+	hangfile := files.NewReaderFile("b", "b", piper, nil)
 
 	datad := ioutil.NopCloser(bytes.NewBufferString("testfileD"))
-	rfd := files.NewReaderFile("d", "d", "d", datad, nil)
+	rfd := files.NewReaderFile("d", "d", datad, nil)
 
-	slf := files.NewSliceFile("files", "files", "files", []files.File{rfa, hangfile, rfd})
+	slf := files.NewSliceFile("files", "files", []files.File{rfa, hangfile, rfd})
 
 	addDone := make(chan struct{})
 	go func() {

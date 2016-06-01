@@ -10,7 +10,8 @@ import (
 var IpfsRabinPoly = chunker.Pol(17437180132763653)
 
 type Rabin struct {
-	r *chunker.Chunker
+	r      *chunker.Chunker
+	reader io.Reader
 }
 
 func NewRabin(r io.Reader, avgBlkSize uint64) *Rabin {
@@ -25,15 +26,20 @@ func NewRabinMinMax(r io.Reader, min, avg, max uint64) *Rabin {
 	ch := chunker.New(r, IpfsRabinPoly, h, avg, min, max)
 
 	return &Rabin{
-		r: ch,
+		r:      ch,
+		reader: r,
 	}
 }
 
-func (r *Rabin) NextBytes() (Bytes, error) {
+func (r *Rabin) NextBytes() ([]byte, error) {
 	ch, err := r.r.Next()
 	if err != nil {
-		return Bytes{}, err
+		return nil, err
 	}
 
-	return Bytes{nil, ch.Data}, nil
+	return ch.Data, nil
+}
+
+func (r *Rabin) Reader() io.Reader {
+	return r.reader
 }

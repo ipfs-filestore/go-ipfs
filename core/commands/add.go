@@ -1,16 +1,23 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"path"
 
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/cheggaaa/pb"
 	"github.com/ipfs/go-ipfs/core/coreunix"
 	"github.com/ipfs/go-ipfs/filestore"
+	"github.com/ipfs/go-ipfs/filestore/support"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
 
+	bserv "github.com/ipfs/go-ipfs/blockservice"
 	cmds "github.com/ipfs/go-ipfs/commands"
+	cli "github.com/ipfs/go-ipfs/commands/cli"
 	files "github.com/ipfs/go-ipfs/commands/files"
 	core "github.com/ipfs/go-ipfs/core"
+	dag "github.com/ipfs/go-ipfs/merkledag"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 )
 
@@ -58,7 +65,6 @@ You can now refer to the added file in a gateway, like so:
   /ipfs/QmaG4FuMqEBnQNn3C8XJ5bpW8kLs7zq2ZXgHptJHbKDDVx/example.jpg
 `,
 	},
-
 	Arguments: []cmds.Argument{
 		cmds.FileArg("path", true, true, "The path to a file to be added to IPFS.").EnableRecursive().EnableStdin(),
 	},
@@ -158,11 +164,27 @@ You can now refer to the added file in a gateway, like so:
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(req.Context(), n, outChan)
+		var fileAdder *coreunix.Adder
+		if nocopy || link {
+			fs, ok := n.Repo.SubDatastore(fsrepo.RepoFilestore).(*filestore.Datastore)
+			if !ok {
+				res.SetError(errors.New("Could not extract filestore"), cmds.ErrNormal)
+				return
+			}
+			blockstore := filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore(), fs)
+			blockService := bserv.New(blockstore, n.Exchange)
+			dagService := dag.NewDAGService(blockService)
+			dagService.NodeToBlock = filestore_support.NodeToBlock{}
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
+		} else {
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
+		}
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
+
+		fileAdder.Out = outChan
 		fileAdder.Chunker = chunker
 		fileAdder.Progress = progress
 		fileAdder.Hidden = hidden
@@ -170,13 +192,6 @@ You can now refer to the added file in a gateway, like so:
 		fileAdder.Wrap = wrap
 		fileAdder.Pin = dopin
 		fileAdder.Silent = silent
-
-		if nocopy {
-			fileAdder.AddOpts = filestore.AddNoCopy
-		}
-		if link {
-			fileAdder.AddOpts = filestore.AddLink
-		}
 
 		addAllAndPin := func(f files.File) error {
 			// Iterate over each top-level file and add individually. Otherwise the
@@ -333,4 +348,51 @@ You can now refer to the added file in a gateway, like so:
 		}
 	},
 	Type: coreunix.AddedObject{},
+}
+
+var AddCmdServerSide = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Like add but the file is read locally on the server.",
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("path", true, true, "The path to a file to be added to IPFS."),
+	},
+	Options: AddCmd.Options,
+
+	PreRun: func(req cmds.Request) error {
+		for _, fn := range req.Arguments() {
+			if !path.IsAbs(fn) {
+				return errors.New("File path must be absolute.")
+			}
+		}
+		return nil
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		config, _ := req.InvocContext().GetConfig()
+		if !config.API.ServerSideAdds {
+			res.SetError(errors.New("Server Side Adds not enabled."), cmds.ErrNormal)
+			return
+		}
+		inputs := req.Arguments()
+		// Double check paths to be safe
+		for _, fn := range inputs {
+			if !path.IsAbs(fn) {
+				res.SetError(errors.New("File path must be absolute."), cmds.ErrNormal)
+				return
+			}
+		}
+		req.SetArguments(nil)
+		_, fileArgs, err := cli.ParseArgs(req, inputs, nil, AddCmd.Arguments, nil)
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		file := files.NewSliceFile("", "", fileArgs)
+		req.SetFiles(file)
+		AddCmd.Run(req, res)
+	},
+	PostRun: func(req cmds.Request, res cmds.Response) {
+		AddCmd.PostRun(req, res)
+	},
+	Type: AddCmd.Type,
 }

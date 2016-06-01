@@ -4,26 +4,21 @@ import (
 	"github.com/ipfs/go-ipfs/commands/files"
 	"github.com/ipfs/go-ipfs/importer/chunk"
 	dag "github.com/ipfs/go-ipfs/merkledag"
+	"os"
 )
 
 // DagBuilderHelper wraps together a bunch of objects needed to
 // efficiently create unixfs dag trees
 type DagBuilderHelper struct {
-	dserv    dag.DAGService
-	spl      chunk.Splitter
-	recvdErr error
-	nextData []byte // the next item to return.
-	posInfo  files.ExtraInfo
-	maxlinks int
-	batch    *dag.Batch
-}
-
-func (db *DagBuilderHelper) addOpts() interface{} {
-	if inf, ok := db.posInfo.(files.PosInfoWaddOpts); ok {
-		return inf.AddOpts
-	} else {
-		return nil
-	}
+	dserv       dag.DAGService
+	spl         chunk.Splitter
+	recvdErr    error
+	nextData    []byte // the next item to return.
+	maxlinks    int
+	needAltData bool
+	batch       *dag.Batch
+	fullPath    string
+	stat        os.FileInfo
 }
 
 type DagBuilderParams struct {
@@ -37,12 +32,18 @@ type DagBuilderParams struct {
 // Generate a new DagBuilderHelper from the given params, which data source comes
 // from chunks object
 func (dbp *DagBuilderParams) New(spl chunk.Splitter) *DagBuilderHelper {
-	return &DagBuilderHelper{
-		dserv:    dbp.Dagserv,
-		spl:      spl,
-		maxlinks: dbp.Maxlinks,
-		batch:    dbp.Dagserv.Batch(),
+	db := &DagBuilderHelper{
+		dserv:       dbp.Dagserv,
+		spl:         spl,
+		maxlinks:    dbp.Maxlinks,
+		needAltData: dbp.Dagserv.NeedAltData(),
+		batch:       dbp.Dagserv.Batch(),
 	}
+	if fi, ok := spl.Reader().(files.FileInfo); ok {
+		db.fullPath = fi.FullPath()
+		db.stat = fi.Stat()
+	}
+	return db
 }
 
 // prepareNext consumes the next item from the splitter and puts it
@@ -55,9 +56,7 @@ func (db *DagBuilderHelper) prepareNext() {
 	}
 
 	// TODO: handle err (which wasn't handled either when the splitter was channeled)
-	nextData, _ := db.spl.NextBytes()
-	db.nextData = nextData.Data
-	db.posInfo = nextData.PosInfo
+	db.nextData, _ = db.spl.NextBytes()
 }
 
 // Done returns whether or not we're done consuming the incoming data.
@@ -115,27 +114,25 @@ func (db *DagBuilderHelper) FillNodeWithData(node *UnixfsNode) error {
 	}
 
 	node.SetData(data)
-	if db.posInfo != nil {
-		node.SetDataPtr(db.posInfo.AbsPath(), db.posInfo.Offset())
-	}
 
 	return nil
 }
 
-func (db *DagBuilderHelper) SetAsRoot(node *UnixfsNode) {
-	if db.posInfo != nil {
-		node.SetDataPtr(db.posInfo.AbsPath(), 0)
-		node.SetAsRoot()
+func (db *DagBuilderHelper) SetPosInfo(node *UnixfsNode, offset uint64) {
+	if db.stat != nil {
+		//println("set pos info ", offset, db.fullPath, db.stat)
+		node.SetPosInfo(offset, db.fullPath, db.stat)
 	}
 }
 
 func (db *DagBuilderHelper) Add(node *UnixfsNode) (*dag.Node, error) {
-	dn, err := node.GetDagNode()
+	//println("dag builder add")
+	dn, err := node.GetDagNode(db.needAltData)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.dserv.AddWOpts(dn, db.addOpts())
+	_, err = db.dserv.Add(dn)
 	if err != nil {
 		return nil, err
 	}
