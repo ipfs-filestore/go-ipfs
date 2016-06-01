@@ -9,6 +9,13 @@ else
   go_test=go test
 endif
 
+
+dist_root=/ipfs/QmXZQzBAFuoELw3NtjQZHkWSdA332PyQUj6pQjuhEukvg8
+gx_bin=bin/gx-v0.7.0
+gx-go_bin=bin/gx-go-v1.2.0
+
+# use things in our bin before any other system binaries
+export PATH := bin:$(PATH)
 export IPFS_API ?= v04x.ipfs.io
 
 all: help
@@ -16,26 +23,28 @@ all: help
 godep:
 	go get github.com/tools/godep
 
-toolkit_upgrade: gx_upgrade gxgo_upgrade
-
 go_check:
 	@bin/check_go_version $(IPFS_MIN_GO_VERSION)
 
-gx_upgrade:
-	go get -u github.com/whyrusleeping/gx
+bin/gx-v%:
+	@echo "installing gx $(@:bin/gx-%=%)"
+	@bin/dist_get ${dist_root} gx $@ $(@:bin/gx-%=%)
+	rm -f bin/gx
+	ln -s $(@:bin/%=%) bin/gx
 
-gxgo_upgrade:
-	go get -u github.com/whyrusleeping/gx-go
+bin/gx-go-v%:
+	@echo "installing gx-go $(@:bin/gx-go-%=%)"
+	@bin/dist_get ${dist_root} gx-go $@ $(@:bin/gx-go-%=%)
+	rm -f bin/gx-go
+	ln -s $(@:bin/%=%) bin/gx-go
+
+gx_check: ${gx_bin} ${gx-go_bin}
 
 path_check:
 	@bin/check_go_path $(realpath $(shell pwd)) $(realpath $(GOPATH)/src/github.com/ipfs/go-ipfs)
 
-gx_check:
-	@bin/check_gx_program "gx" $(IPFS_MIN_GX_VERSION) 'Upgrade or install gx using your package manager or run `make gx_upgrade`'
-	@bin/check_gx_program "gx-go" $(IPFS_MIN_GX_GO_VERSION) 'Upgrade or install gx-go using your package manager or run `make gxgo_upgrade`'
-
 deps: go_check gx_check path_check
-	gx --verbose install --global
+	${gx_bin} --verbose install --global
 
 # saves/vendors third-party dependencies to Godeps/_workspace
 # -r flag rewrites import paths to use the vendored path
@@ -58,7 +67,7 @@ clean:
 uninstall:
 	make -C cmd/ipfs uninstall
 
-PHONY += all help godep toolkit_upgrade gx_upgrade gxgo_upgrade gx_check
+PHONY += all help godep gx_check
 PHONY += go_check deps vendor install build nofuse clean uninstall
 
 ##############################################################
@@ -115,7 +124,7 @@ PHONY += test test_short test_expensive
 help:
 	@echo 'DEPENDENCY TARGETS:'
 	@echo ''
-	@echo '  toolkit_upgrade - Installs or upgrades gx'
+	@echo '  gx_check        - Installs or upgrades gx and gx-go'
 	@echo '  deps            - Download dependencies using gx'
 	@echo '  vendor          - Create a Godep workspace of 3rd party dependencies'
 	@echo ''

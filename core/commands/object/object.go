@@ -65,17 +65,15 @@ var ObjectDataCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Outputs the raw bytes in an IPFS object.",
 		ShortDescription: `
-'ipfs object data' is a plumbing command for retrieving the raw bytes stored in
-a DAG node. It outputs to stdout, and <key> is a base58 encoded
-multihash.
+'ipfs object data' is a plumbing command for retrieving the raw bytes stored
+in a DAG node. It outputs to stdout, and <key> is a base58 encoded multihash.
 `,
 		LongDescription: `
-'ipfs object data' is a plumbing command for retrieving the raw bytes stored in
-a DAG node. It outputs to stdout, and <key> is a base58 encoded
-multihash.
+'ipfs object data' is a plumbing command for retrieving the raw bytes stored
+in a DAG node. It outputs to stdout, and <key> is a base58 encoded multihash.
 
-Note that the "--encoding" option does not affect the output, since the
-output is the raw data of the object.
+Note that the "--encoding" option does not affect the output, since the output
+is the raw data of the object.
 `,
 	},
 
@@ -113,7 +111,7 @@ multihash.
 		cmds.StringArg("key", true, false, "Key of the object to retrieve, in base58-encoded multihash format.").EnableStdin(),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("headers", "v", "Print table headers (Hash, Size, Name)."),
+		cmds.BoolOption("headers", "v", "Print table headers (Hash, Size, Name).").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()
@@ -215,7 +213,7 @@ This command outputs data in the following encodings:
 	},
 	Type: Node{},
 	Marshalers: cmds.MarshalerMap{
-		cmds.EncodingType("protobuf"): func(res cmds.Response) (io.Reader, error) {
+		cmds.Protobuf: func(res cmds.Response) (io.Reader, error) {
 			node := res.Output().(*Node)
 			// deserialize the Data field as text as this was the standard behaviour
 			object, err := deserializeNode(node, "text")
@@ -313,8 +311,8 @@ Examples:
 
 	$ echo '{ "Data": "abc" }' | ipfs object put
 
-This creates a node with the data 'abc' and no links. For an object with links,
-create a file named 'node.json' with the contents:
+This creates a node with the data 'abc' and no links. For an object with
+links, create a file named 'node.json' with the contents:
 
     {
         "Data": "another",
@@ -335,7 +333,7 @@ And then run:
 		cmds.FileArg("data", true, false, "Data to be stored as a DAG object.").EnableStdin(),
 	},
 	Options: []cmds.Option{
-		cmds.StringOption("inputenc", "Encoding type of input data, either \"protobuf\" or \"json\"."),
+		cmds.StringOption("inputenc", "Encoding type of input data. One of: {\"protobuf\", \"json\"}.").Default("json"),
 		cmds.StringOption("datafieldenc", "Encoding type of the data field, either \"text\" or \"base64\".").Default("text"),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
@@ -351,16 +349,13 @@ And then run:
 			return
 		}
 
-		inputenc, found, err := req.Option("inputenc").String()
+		inputenc, _, err := req.Option("inputenc").String()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		if !found {
-			inputenc = "json"
-		}
 
-		datafieldenc, found, err := req.Option("datafieldenc").String()
+		datafieldenc, _, err := req.Option("datafieldenc").String()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return

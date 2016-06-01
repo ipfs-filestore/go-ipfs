@@ -11,12 +11,13 @@ import (
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
+	blockstore "github.com/ipfs/go-ipfs/blocks/blockstore"
 	blocksutil "github.com/ipfs/go-ipfs/blocks/blocksutil"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	tn "github.com/ipfs/go-ipfs/exchange/bitswap/testnet"
 	mockrouting "github.com/ipfs/go-ipfs/routing/mock"
 	delay "github.com/ipfs/go-ipfs/thirdparty/delay"
-	p2ptestutil "gx/ipfs/QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5/go-libp2p/p2p/test/util"
+	p2ptestutil "gx/ipfs/QmRW2xiYTpDLWTHb822ZYbPBoh3dGLJwaXLGS9tnPyWZpq/go-libp2p/p2p/test/util"
 )
 
 // FIXME the tests are really sensitive to the network delay. fix them to work
@@ -276,6 +277,18 @@ func TestSendToWantingPeer(t *testing.T) {
 		t.Fatal("Wrong block!")
 	}
 
+}
+
+func TestEmptyKey(t *testing.T) {
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	sg := NewTestSessionGenerator(net)
+	defer sg.Close()
+	bs := sg.Instances(1)[0].Exchange
+
+	_, err := bs.GetBlock(context.Background(), key.Key(""))
+	if err != blockstore.ErrNotFound {
+		t.Error("empty str key should return ErrNotFound")
+	}
 }
 
 func TestBasicBitswap(t *testing.T) {

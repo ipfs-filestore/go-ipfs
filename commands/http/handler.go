@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	cors "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/rs/cors"
 	"github.com/ipfs/go-ipfs/repo/config"
+	cors "gx/ipfs/QmQzTLDsi3a37CJyMDBXnjiHKQpth3AGS1yqwU57FfLwfG/cors"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 
 	cmds "github.com/ipfs/go-ipfs/commands"
@@ -65,9 +65,10 @@ const (
 )
 
 var mimeTypes = map[string]string{
-	cmds.JSON: "application/json",
-	cmds.XML:  "application/xml",
-	cmds.Text: "text/plain",
+	cmds.Protobuf: "application/protobuf",
+	cmds.JSON:     "application/json",
+	cmds.XML:      "application/xml",
+	cmds.Text:     "text/plain",
 }
 
 type ServerConfig struct {

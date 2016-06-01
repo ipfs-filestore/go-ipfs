@@ -13,7 +13,7 @@ import (
 	path "github.com/ipfs/go-ipfs/path"
 	ipdht "github.com/ipfs/go-ipfs/routing/dht"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	peer "gx/ipfs/QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt/go-libp2p-peer"
+	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 )
 
 var ErrNotDHT = errors.New("routing service is not a DHT")
@@ -43,7 +43,7 @@ var queryDhtCmd = &cmds.Command{
 		cmds.StringArg("peerID", true, true, "The peerID to run the query against."),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("verbose", "v", "Write debug information."),
+		cmds.BoolOption("verbose", "v", "Print extra information.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()
@@ -135,7 +135,7 @@ var findProvidersDhtCmd = &cmds.Command{
 		cmds.StringArg("key", true, true, "The key to find providers for."),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("verbose", "v", "Write debug information."),
+		cmds.BoolOption("verbose", "v", "Print extra information.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()
@@ -236,7 +236,7 @@ var findPeerDhtCmd = &cmds.Command{
 		cmds.StringArg("peerID", true, true, "The ID of the peer to search for."),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("verbose", "v", "Write debug information."),
+		cmds.BoolOption("verbose", "v", "Print extra information.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()
@@ -331,7 +331,11 @@ var getValueDhtCmd = &cmds.Command{
 		ShortDescription: `
 Outputs the best value for the given key.
 
-There may be several different values for a given key stored in the DHT; in this context 'best' means the record that is most desirable. There is no one metric for 'best': it depends entirely on the key type. For IPNS, 'best' is the record that is both valid and has the highest sequence number (freshest). Different key types can specify other 'best' rules.
+There may be several different values for a given key stored in the DHT; in
+this context 'best' means the record that is most desirable. There is no one
+metric for 'best': it depends entirely on the key type. For IPNS, 'best' is
+the record that is both valid and has the highest sequence number (freshest).
+Different key types can specify other 'best' rules.
 `,
 	},
 
@@ -339,7 +343,7 @@ There may be several different values for a given key stored in the DHT; in this
 		cmds.StringArg("key", true, true, "The key to find a value for."),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("verbose", "v", "Write debug information."),
+		cmds.BoolOption("verbose", "v", "Print extra information.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()
@@ -434,11 +438,17 @@ var putValueDhtCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Write a key/value pair to the DHT.",
 		ShortDescription: `
-Given a key of the form /foo/bar and a value of any form, this will write that value to the DHT with that key.
+Given a key of the form /foo/bar and a value of any form, this will write that
+value to the DHT with that key.
 
-Keys have two parts: a keytype (foo) and the key name (bar). IPNS uses the /ipns keytype, and expects the key name to be a Peer ID. IPNS entries are specifically formatted (protocol buffer).
+Keys have two parts: a keytype (foo) and the key name (bar). IPNS uses the
+/ipns keytype, and expects the key name to be a Peer ID. IPNS entries are
+specifically formatted (protocol buffer).
 
-You may only use keytypes that are supported in your ipfs binary: currently this is only /ipns. Unless you have a relatively deep understanding of the go-ipfs DHT internals, you likely want to be using 'ipfs name publish' instead of this.
+You may only use keytypes that are supported in your ipfs binary: currently
+this is only /ipns. Unless you have a relatively deep understanding of the
+go-ipfs DHT internals, you likely want to be using 'ipfs name publish' instead
+of this.
 
 Value is arbitrary text. Standard input can be used to provide value.
 
@@ -451,7 +461,7 @@ NOTE: A value may not exceed 2048 bytes.
 		cmds.StringArg("value", true, false, "The value to store.").EnableStdin(),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("verbose", "v", "Write debug information."),
+		cmds.BoolOption("verbose", "v", "Print extra information.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		n, err := req.InvocContext().GetNode()

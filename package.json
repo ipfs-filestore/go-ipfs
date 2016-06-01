@@ -13,15 +13,15 @@
       "version": "1.1.0"
     },
     {
-      "hash": "QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5",
+      "hash": "QmRW2xiYTpDLWTHb822ZYbPBoh3dGLJwaXLGS9tnPyWZpq",
       "name": "go-libp2p",
-      "version": "2.0.3"
+      "version": "3.2.3"
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmPKuU1ohMDaJRJHmatXewCqjZp5wKrD3CK6m9TnCK6XBe",
+      "hash": "QmbuSYB51KtX8izgab1fSyBgsyMH2hTuCfBtXm77PeXWca",
       "name": "go-libp2p-secio",
-      "version": "1.0.1"
+      "version": "1.0.4"
     },
     {
       "author": "whyrusleeping",
@@ -31,9 +31,9 @@
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt",
+      "hash": "QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4",
       "name": "go-libp2p-peer",
-      "version": "1.0.2"
+      "version": "1.0.6"
     },
     {
       "hash": "QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt",
@@ -61,13 +61,55 @@
       "version": "0.0.0"
     },
     {
-      "hash": "QmSx5xkktduyo1hBL7kZxdiZq1P9TrgeGkNW8qtoY14bSk",
+      "hash": "QmaMGvaTmd613tWZuVjw3ohvdz1Gh1CBJ2fgb96eyp4EfE",
       "name": "iptb",
-      "version": "0.0.0"
+      "version": "1.0.0"
     },
     {
       "hash": "QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku",
       "name": "go-multihash",
+      "version": "0.0.0"
+    },
+    {
+      "author": "satori",
+      "hash": "QmcyaFHbyiZfoX5GTpcqqCPYmbjYNAhRDekXSJPFHdYNSV",
+      "name": "go.uuid",
+      "version": "1.0.0"
+    },
+    {
+      "author": "steakknife",
+      "hash": "QmeWQMDa5dSdP4n8WDeoY5z8L2EKVqF4ZvK4VEHsLqXsGu",
+      "name": "hamming",
+      "version": "0.0.10"
+    },
+    {
+      "author": "cenk",
+      "hash": "QmPJUtEJsm5YLUWhF6imvyCH8KZXRJa9Wup7FDMwTy5Ufz",
+      "name": "backoff",
+      "version": "1.0.0"
+    },
+    {
+      "author": "Bren2010",
+      "hash": "QmYnf27kzqR2cxt6LFZdrAFJuQd6785fTkBvMuEj9EeRxM",
+      "name": "proquint",
+      "version": "0.0.0"
+    },
+    {
+      "author": "cheggaaa",
+      "hash": "QmeWjRodbcZFKe5tMN7poEx3izym6osrLSnTLf9UjJZBbs",
+      "name": "pb",
+      "version": "1.0.3"
+    },
+    {
+      "author": "jbenet",
+      "hash": "QmX6DhWrpBB5NtadXmPSXYNdVvuLfJXoFNMvUMoVvP5UJa",
+      "name": "go-context",
+      "version": "0.0.0"
+    },
+    {
+      "author": "rs",
+      "hash": "QmQzTLDsi3a37CJyMDBXnjiHKQpth3AGS1yqwU57FfLwfG",
+      "name": "cors",
       "version": "0.0.0"
     }
   ],

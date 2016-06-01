@@ -21,7 +21,7 @@ import (
 	ft "github.com/ipfs/go-ipfs/unixfs"
 	ci "gx/ipfs/QmUEUu1CM8bxBJxc3ZLojAi8evhTr4byQogWstABet79oY/go-libp2p-crypto"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	peer "gx/ipfs/QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt/go-libp2p-peer"
+	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 )
 
 // ErrExpiredRecord should be returned when an ipns record is
@@ -135,6 +135,9 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 }
 
 func PutRecordToRouting(ctx context.Context, k ci.PrivKey, value path.Path, seqnum uint64, eol time.Time, r routing.IpfsRouting, id peer.ID) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	namekey, ipnskey := IpnsKeysForID(id)
 	entry, err := CreateRoutingEntryData(k, value, seqnum, eol)
 	if err != nil {
@@ -146,7 +149,7 @@ func PutRecordToRouting(ctx context.Context, k ci.PrivKey, value path.Path, seqn
 		entry.Ttl = proto.Uint64(uint64(ttl.Nanoseconds()))
 	}
 
-	errs := make(chan error)
+	errs := make(chan error, 2)
 
 	go func() {
 		errs <- PublishEntry(ctx, r, ipnskey, entry)

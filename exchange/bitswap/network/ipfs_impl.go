@@ -1,15 +1,18 @@
 package network
 
 import (
+	"io"
+
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	bsmsg "github.com/ipfs/go-ipfs/exchange/bitswap/message"
 	routing "github.com/ipfs/go-ipfs/routing"
-	host "gx/ipfs/QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5/go-libp2p/p2p/host"
-	inet "gx/ipfs/QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5/go-libp2p/p2p/net"
-	peer "gx/ipfs/QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt/go-libp2p-peer"
+	host "gx/ipfs/QmRW2xiYTpDLWTHb822ZYbPBoh3dGLJwaXLGS9tnPyWZpq/go-libp2p/p2p/host"
+	inet "gx/ipfs/QmRW2xiYTpDLWTHb822ZYbPBoh3dGLJwaXLGS9tnPyWZpq/go-libp2p/p2p/net"
+	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
+	ggio "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/io"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
-	ma "gx/ipfs/QmcobAGsCjYt5DXoq9et9L8yR8er7o7Cu3DTvpaq12jYSz/go-multiaddr"
+	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 )
 
 var log = logging.Logger("bitswap_network")
@@ -150,17 +153,22 @@ func (bsnet *impl) handleNewStream(s inet.Stream) {
 		return
 	}
 
-	received, err := bsmsg.FromNet(s)
-	if err != nil {
-		go bsnet.receiver.ReceiveError(err)
-		log.Debugf("bitswap net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
-		return
-	}
+	reader := ggio.NewDelimitedReader(s, inet.MessageSizeMax)
+	for {
+		received, err := bsmsg.FromPBReader(reader)
+		if err != nil {
+			if err != io.EOF {
+				go bsnet.receiver.ReceiveError(err)
+				log.Debugf("bitswap net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
+			}
+			return
+		}
 
-	p := s.Conn().RemotePeer()
-	ctx := context.Background()
-	log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
-	bsnet.receiver.ReceiveMessage(ctx, p, received)
+		p := s.Conn().RemotePeer()
+		ctx := context.Background()
+		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
+		bsnet.receiver.ReceiveMessage(ctx, p, received)
+	}
 }
 
 type netNotifiee impl

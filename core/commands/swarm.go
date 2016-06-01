@@ -10,11 +10,11 @@ import (
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	iaddr "github.com/ipfs/go-ipfs/thirdparty/ipfsaddr"
-	swarm "gx/ipfs/QmXDvxcXUYn2DDnGKJwdQPxkJgG83jBTp5UmmNzeHzqbj5/go-libp2p/p2p/net/swarm"
-	peer "gx/ipfs/QmZwZjMVGss5rqYsJVGy18gNbkTJffFyq2x1uJ4e4p3ZAt/go-libp2p-peer"
+	swarm "gx/ipfs/QmRW2xiYTpDLWTHb822ZYbPBoh3dGLJwaXLGS9tnPyWZpq/go-libp2p/p2p/net/swarm"
+	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 
-	ma "gx/ipfs/QmcobAGsCjYt5DXoq9et9L8yR8er7o7Cu3DTvpaq12jYSz/go-multiaddr"
-	mafilter "gx/ipfs/Qme8dipKnZAChkp5Kfgj2MYYyBbzjqqPXmxQx3g9v3MoxP/multiaddr-filter"
+	mafilter "gx/ipfs/QmUaRHbB7pUwj5mS9BS4CMvBiW48MpaH2wbGxeWfFhhHxK/multiaddr-filter"
+	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
 )
 
 type stringList struct {
@@ -50,6 +50,11 @@ var swarmPeersCmd = &cmds.Command{
 'ipfs swarm peers' lists the set of peers this node is connected to.
 `,
 	},
+	Options: []cmds.Option{
+		cmds.BoolOption("verbose", "v",
+			"Also display latency along with peer information in the following form: "+
+				"<peer address> <latency>"),
+	},
 	Run: func(req cmds.Request, res cmds.Response) {
 
 		log.Debug("ipfs swarm peers")
@@ -64,12 +69,19 @@ var swarmPeersCmd = &cmds.Command{
 			return
 		}
 
+		verbose, _, _ := req.Option("verbose").Bool()
 		conns := n.PeerHost.Network().Conns()
 		addrs := make([]string, len(conns))
+
 		for i, c := range conns {
 			pid := c.RemotePeer()
 			addr := c.RemoteMultiaddr()
-			addrs[i] = fmt.Sprintf("%s/ipfs/%s", addr, pid.Pretty())
+
+			if verbose {
+				addrs[i] = fmt.Sprintf("%s/ipfs/%s %s", addr, pid.Pretty(), n.Peerstore.LatencyEWMA(pid))
+			} else {
+				addrs[i] = fmt.Sprintf("%s/ipfs/%s", addr, pid.Pretty())
+			}
 		}
 
 		sort.Sort(sort.StringSlice(addrs))
@@ -152,7 +164,7 @@ var swarmAddrsLocalCmd = &cmds.Command{
 `,
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("id", "Show peer ID in addresses."),
+		cmds.BoolOption("id", "Show peer ID in addresses.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 
@@ -248,12 +260,13 @@ var swarmDisconnectCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Close connection to a given address.",
 		ShortDescription: `
-'ipfs swarm disconnect' closes a connection to a peer address. The address format
-is an ipfs multiaddr:
+'ipfs swarm disconnect' closes a connection to a peer address. The address
+format is an ipfs multiaddr:
 
 ipfs swarm disconnect /ip4/104.131.131.82/tcp/4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ
 
-The disconnect is not permanent; if ipfs needs to talk to that address later, it will reconnect.
+The disconnect is not permanent; if ipfs needs to talk to that address later,
+it will reconnect.
 `,
 	},
 	Arguments: []cmds.Argument{
@@ -361,10 +374,11 @@ var swarmFiltersCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Manipulate address filters.",
 		ShortDescription: `
-'ipfs swarm filters' will list out currently applied filters. Its subcommands can be used
-to add or remove said filters. Filters are specified using the multiaddr-filter format:
+'ipfs swarm filters' will list out currently applied filters. Its subcommands
+can be used to add or remove said filters. Filters are specified using the
+multiaddr-filter format:
 
-example:
+Example:
 
     /ip4/192.168.0.0/ipcidr/16
 

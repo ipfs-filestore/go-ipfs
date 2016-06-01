@@ -7,9 +7,10 @@ test_description="Test dht command"
 # start iptb + wait for peering
 NUM_NODES=5
 test_expect_success 'init iptb' '
-  iptb init -n $NUM_NODES --bootstrap=none --port=0 &&
-  startup_cluster $NUM_NODES
+  iptb init -n $NUM_NODES --bootstrap=none --port=0
 '
+
+startup_cluster $NUM_NODES
 
 test_expect_success 'peer ids' '
   PEERID_0=$(iptb get id 0) &&
@@ -19,7 +20,7 @@ test_expect_success 'peer ids' '
 # ipfs dht findpeer <peerID>
 test_expect_success 'findpeer' '
   ipfsi 1 dht findpeer $PEERID_0 | sort >actual &&
-  echo "$(ipfsi 0 id -f "<addrs>" | cut -d / -f 1-5 | sort >expected)"
+  ipfsi 0 id -f "<addrs>" | cut -d / -f 1-5 | sort >expected &&
   test_cmp actual expected
 '
 
@@ -49,6 +50,7 @@ test_expect_success 'get' '
 # ipfs dht query <peerID>
 ## We query 3 different keys, to statisically lower the chance that the queryer
 ## turns out to be the closest to what a key hashes to.
+# TODO: flaky. tracked by https://github.com/ipfs/go-ipfs/issues/2620
 test_expect_failure 'query' '
   ipfsi 3 dht query banana >actual &&
   ipfsi 3 dht query apple >>actual &&

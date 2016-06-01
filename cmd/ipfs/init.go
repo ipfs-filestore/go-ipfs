@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +16,9 @@ import (
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
-const nBitsForKeypairDefault = 2048
+const (
+	nBitsForKeypairDefault = 2048
+)
 
 var initCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
@@ -25,18 +26,17 @@ var initCmd = &cmds.Command{
 		ShortDescription: `
 Initializes IPFS configuration files and generates a new keypair.
 
-ipfs uses a repository in the local file system. By default, the repo is located
-at ~/.ipfs. To change the repo location, set the $IPFS_PATH environment variable:
+ipfs uses a repository in the local file system. By default, the repo is
+located at ~/.ipfs. To change the repo location, set the $IPFS_PATH
+environment variable:
 
     export IPFS_PATH=/path/to/ipfsrepo
 `,
 	},
-	Arguments: []cmds.Argument{
-		cmds.FileArg("default-config", false, false, "Initialize with the given configuration.").EnableStdin(),
-	},
+
 	Options: []cmds.Option{
-		cmds.IntOption("bits", "b", fmt.Sprintf("Number of bits to use in the generated RSA private key (defaults to %d)", nBitsForKeypairDefault)),
-		cmds.BoolOption("empty-repo", "e", "Don't add and pin help files to the local storage."),
+		cmds.IntOption("bits", "b", "Number of bits to use in the generated RSA private key.").Default(nBitsForKeypairDefault),
+		cmds.BoolOption("empty-repo", "e", "Don't add and pin help files to the local storage.").Default(false),
 
 		// TODO need to decide whether to expose the override as a file or a
 		// directory. That is: should we allow the user to also specify the
@@ -64,40 +64,19 @@ at ~/.ipfs. To change the repo location, set the $IPFS_PATH environment variable
 			return
 		}
 
-		empty, _, err := req.Option("e").Bool() // if !empty, it's okay empty == false
+		empty, _, err := req.Option("e").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
 
-		nBitsForKeypair, bitsOptFound, err := req.Option("b").Int()
+		nBitsForKeypair, _, err := req.Option("b").Int()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
 
-		if !bitsOptFound {
-			nBitsForKeypair = nBitsForKeypairDefault
-		}
-
-		var conf *config.Config
-
-		f := req.Files()
-		if f != nil {
-			confFile, err := f.NextFile()
-			if err != nil {
-				res.SetError(err, cmds.ErrNormal)
-				return
-			}
-
-			conf = &config.Config{}
-			if err := json.NewDecoder(confFile).Decode(conf); err != nil {
-				res.SetError(err, cmds.ErrNormal)
-				return
-			}
-		}
-
-		if err := doInit(os.Stdout, req.InvocContext().ConfigRoot, empty, nBitsForKeypair, conf); err != nil {
+		if err := doInit(os.Stdout, req.InvocContext().ConfigRoot, empty, nBitsForKeypair); err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
@@ -109,10 +88,10 @@ Reinitializing would overwrite your keys.
 `)
 
 func initWithDefaults(out io.Writer, repoRoot string) error {
-	return doInit(out, repoRoot, false, nBitsForKeypairDefault, nil)
+	return doInit(out, repoRoot, false, nBitsForKeypairDefault)
 }
 
-func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int, conf *config.Config) error {
+func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int) error {
 	if _, err := fmt.Fprintf(out, "initializing ipfs node at %s\n", repoRoot); err != nil {
 		return err
 	}
@@ -125,12 +104,9 @@ func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int, con
 		return errRepoExists
 	}
 
-	if conf == nil {
-		var err error
-		conf, err = config.Init(out, nBitsForKeypair)
-		if err != nil {
-			return err
-		}
+	conf, err := config.Init(out, nBitsForKeypair)
+	if err != nil {
+		return err
 	}
 
 	if err := fsrepo.Init(repoRoot, conf); err != nil {

@@ -159,7 +159,12 @@ func (i *gatewayHandler) getOrHeadHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	nd, err := core.Resolve(ctx, i.node, path.Path(urlPath))
-	if err != nil {
+	// If node is in offline mode the error code and message should be different
+	if err == core.ErrNoNamesys && !i.node.OnlineMode() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, "Could not resolve path. Node is in offline mode.")
+		return
+	} else if err != nil {
 		webError(w, "Path Resolve error", err, http.StatusBadRequest)
 		return
 	}
@@ -205,7 +210,7 @@ func (i *gatewayHandler) getOrHeadHandler(w http.ResponseWriter, r *http.Request
 	modtime := time.Now()
 	if strings.HasPrefix(urlPath, ipfsPathPrefix) {
 		w.Header().Set("Etag", etag)
-		w.Header().Set("Cache-Control", "public, max-age=29030400")
+		w.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
 
 		// set modtime to a really long time ago, since files are immutable and should stay cached
 		modtime = time.Unix(1, 0)

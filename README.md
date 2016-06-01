@@ -57,7 +57,8 @@ From there:
 
 #### Install Go
 
-First, you'll need Go. If you don't have it: [Download Go 1.5.2+](https://golang.org/dl/). **Go 1.6 is not yet supported.**
+The build process for ipfs requires Go 1.5+, but we strongly recommend using 1.6.2. If you don't have it: [Download Go 1.6.2+](https://golang.org/dl/).
+
 
 You'll need to add Go's bin directories to your `$PATH` environment variable e.g., by adding these lines to your `/etc/profile` (for a system-wide installation) or `$HOME/.profile`:
 
@@ -72,8 +73,7 @@ export PATH=$PATH:$GOPATH/bin
 
 go-ipfs differs from the vanilla `go get` flow: it uses
 [gx](https://github.com/whyrusleeping/gx)/[gx-go](https://github.com/whyrusleeping/gx-go)
-for dependency management. This means you'll need to perform download and
-install steps separately.
+for dependency management.
 
 First download `go-ipfs` without installing:
 
@@ -83,13 +83,7 @@ $ go get -d github.com/ipfs/go-ipfs
 $ cd $GOPATH/src/github.com/ipfs/go-ipfs
 ```
 
-If you don't already have them on your system, install `gx` and `gx-go`:
-
-```sh
-$ make toolkit_upgrade
-```
-
-Finally, install `go-ipfs`:
+Then install `go-ipfs` and its dependencies, including `gx` and `gx-go`:
 
 ```
 $ make install
@@ -97,6 +91,7 @@ $ make install
 
 #### Troubleshooting
 
+* Separate [instructions are available for building on Windows](docs/windows.md).
 * `git` is required in order for `go get` to fetch all dependencies.
 * Package managers often contain out-of-date `golang` packages.
   Ensure that `go version` reports at least 1.5.2. See above for how to install go.

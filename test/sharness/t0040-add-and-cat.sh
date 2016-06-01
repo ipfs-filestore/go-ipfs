@@ -11,9 +11,11 @@ test_description="Test add and cat commands"
 client_err_add() {
     printf "$@\n\n"
     echo 'USAGE
-  ipfs add <path>... - Add a file or directory to ipfs.
+  ipfs add <path>... - Add a file to ipfs.
 
-  Adds contents of <path> to ipfs. Use -r to add directories (recursively).
+  Adds contents of <path> to ipfs. Use -r to add directories.
+  Note that directories are added recursively, to form the ipfs
+  MerkleDAG.
 
 Use '"'"'ipfs add --help'"'"' for more information about this command.
 '
@@ -73,6 +75,17 @@ test_add_cat_file() {
     test_expect_success "ipfs add --chunker size-32 output looks good" '
     	HASH="QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH" &&
         echo "added $HASH hello.txt" >expected &&
+        test_cmp expected actual
+    '
+
+    test_expect_success "ipfs add on hidden file succeeds" '
+        echo "Hello Worlds!" >mountdir/.hello.txt &&
+        ipfs add mountdir/.hello.txt >actual
+    '
+
+    test_expect_success "ipfs add on hidden file output looks good" '
+        HASH="QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH" &&
+        echo "added $HASH .hello.txt" >expected &&
         test_cmp expected actual
     '
 }
@@ -360,7 +373,7 @@ test_add_cat_5MB
 
 test_add_cat_expensive
 
-test_add_named_pipe " Post http://$API_ADDR/api/v0/add?encoding=json&progress=true&r=true&stream-channels=true:"
+test_add_named_pipe " Post http://$API_ADDR/api/v0/add?encoding=json&r=true&stream-channels=true:"
 
 test_kill_ipfs_daemon
 
@@ -378,5 +391,12 @@ test_expect_success "ipfs cat file fails" '
 '
 
 test_add_named_pipe ""
+
+# Test daemon in offline mode
+test_launch_ipfs_daemon --offline
+
+test_add_cat_file
+
+test_kill_ipfs_daemon
 
 test_done

@@ -9,7 +9,7 @@ import (
 	gopath "path"
 	"strings"
 
-	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/cheggaaa/pb"
+	"gx/ipfs/QmeWjRodbcZFKe5tMN7poEx3izym6osrLSnTLf9UjJZBbs/pb"
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
@@ -26,8 +26,8 @@ var GetCmd = &cmds.Command{
 		ShortDescription: `
 Stores to disk the data contained an IPFS or IPNS object(s) at the given path.
 
-By default, the output will be stored at './<ipfs-path>', but an alternate path
-can be specified with '--output=<path>' or '-o=<path>'.
+By default, the output will be stored at './<ipfs-path>', but an alternate
+path can be specified with '--output=<path>' or '-o=<path>'.
 
 To output a TAR archive instead of unpacked files, use '--archive' or '-a'.
 
@@ -41,9 +41,9 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 	},
 	Options: []cmds.Option{
 		cmds.StringOption("output", "o", "The path where the output should be stored."),
-		cmds.BoolOption("archive", "a", "Output a TAR archive. Default: false."),
-		cmds.BoolOption("compress", "C", "Compress the output with GZIP compression. Default: false."),
-		cmds.IntOption("compression-level", "l", "The level of compression (1-9). Default: -1."),
+		cmds.BoolOption("archive", "a", "Output a TAR archive.").Default(false),
+		cmds.BoolOption("compress", "C", "Compress the output with GZIP compression.").Default(false),
+		cmds.IntOption("compression-level", "l", "The level of compression (1-9).").Default(-1),
 	},
 	PreRun: func(req cmds.Request) error {
 		_, err := getCompressOptions(req)

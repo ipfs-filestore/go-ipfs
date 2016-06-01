@@ -97,6 +97,9 @@ func (n *DefaultDagService) Batch() *Batch {
 
 // Get retrieves a node from the dagService, fetching the block in the BlockService
 func (n *DefaultDagService) Get(ctx context.Context, k key.Key) (*Node, error) {
+	if k == "" {
+		return nil, ErrNotFound
+	}
 	if n == nil {
 		return nil, fmt.Errorf("dagService is nil")
 	}

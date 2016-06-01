@@ -33,7 +33,8 @@ var LsCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "List links from an object.",
 		ShortDescription: `
-Displays the links an IPFS or IPNS object(s) contains, with the following format:
+Displays the links an IPFS or IPNS object(s) contains, with the following
+format:
 
   <link base58 hash> <link size in bytes> <link name>
 `,
@@ -43,7 +44,7 @@ Displays the links an IPFS or IPNS object(s) contains, with the following format
 		cmds.StringArg("ipfs-path", true, true, "The path to the IPFS object(s) to list links from.").EnableStdin(),
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("headers", "v", "Print table headers (Hash, Size, Name)."),
+		cmds.BoolOption("headers", "v", "Print table headers (Hash, Size, Name).").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		node, err := req.InvocContext().GetNode()

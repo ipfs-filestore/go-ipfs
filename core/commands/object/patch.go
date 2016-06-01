@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"strings"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
 	dag "github.com/ipfs/go-ipfs/merkledag"
@@ -242,17 +241,17 @@ Example:
     $ BAR=$(echo "bar" | ipfs add -q)
     $ ipfs object patch $EMPTY_DIR add-link foo $BAR
 
-This takes an empty directory, and adds a link named 'foo' under it, pointing to
-a file containing 'bar', and returns the hash of the new object.
+This takes an empty directory, and adds a link named 'foo' under it, pointing
+to a file containing 'bar', and returns the hash of the new object.
 `,
-	},
-	Options: []cmds.Option{
-		cmds.BoolOption("p", "create", "Create intermediary nodes."),
 	},
 	Arguments: []cmds.Argument{
 		cmds.StringArg("root", true, false, "The hash of the node to modify."),
 		cmds.StringArg("name", true, false, "Name of link to create."),
 		cmds.StringArg("ref", true, false, "IPFS object to add link to."),
+	},
+	Options: []cmds.Option{
+		cmds.BoolOption("p", "create", "Create intermediary nodes.").Default(false),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		nd, err := req.InvocContext().GetNode()
@@ -273,8 +272,12 @@ a file containing 'bar', and returns the hash of the new object.
 			return
 		}
 
-		path := req.Arguments()[1]
-		childk := key.B58KeyDecode(req.Arguments()[2])
+		npath := req.Arguments()[1]
+		childp, err := path.ParsePath(req.Arguments()[2])
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
 
 		create, _, err := req.Option("create").Bool()
 		if err != nil {
@@ -291,13 +294,13 @@ a file containing 'bar', and returns the hash of the new object.
 
 		e := dagutils.NewDagEditor(root, nd.DAG)
 
-		childnd, err := nd.DAG.Get(req.Context(), childk)
+		childnd, err := core.Resolve(req.Context(), nd, childp)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
 
-		err = e.InsertNodeAtPath(req.Context(), path, childnd, createfunc)
+		err = e.InsertNodeAtPath(req.Context(), npath, childnd, createfunc)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
