@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"path/filepath"
+	"strings"
 
 	//ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
 	//bs "github.com/ipfs/go-ipfs/blocks/blockstore"
@@ -29,6 +31,8 @@ var FileStoreCmd = &cmds.Command{
 		"fix-pins": repairPins,
 		"unpinned": fsUnpinned,
 		"rm-dups":  rmDups,
+		"upgrade":  fsUpgrade,
+		"mv":       moveIntoFilestore,
 	},
 }
 
@@ -36,8 +40,18 @@ var lsFileStore = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "List objects in filestore",
 		ShortDescription: `
-List objects in the filestore.  If --quiet is specified only the
-hashes are printed, otherwise the fields are as follows:
+List objects in the filestore.  If one or more <obj> is specified only
+list those specific objects, otherwise list all objects.  An <obj> can
+either be a multihash, or an absolute path.  If the path ends in '/'
+than it is assumed to be a directory and all paths with that directory
+are included.
+
+If --all is specified list all matching blocks are lists, otherwise
+only blocks representing the a file root is listed.  A file root is any
+block that represents a complete file.
+
+If --quiet is specified only the hashes are printed, otherwise the
+fields are as follows:
   <hash> <type> <filepath> <offset> <size> [<modtime>]
 where <type> is one of"
   leaf: to indicate a node where the contents are stored
@@ -47,12 +61,15 @@ where <type> is one of"
   invld: a leaf node that has been found invalid
 and <filepath> is the part of the file the object represents.  The
 part represented starts at <offset> and continues for <size> bytes.
-If <offset> is the special value "-" than the "leaf" or "root" node
-represents the whole file.
+If <offset> is the special value "-" indicates a file root.
 `,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("obj", false, true, "Hash or filename to list."),
 	},
 	Options: []cmds.Option{
 		cmds.BoolOption("quiet", "q", "Write just hashes of objects."),
+		cmds.BoolOption("all", "a", "List everything, not just file roots."),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		_, fs, err := extractFilestore(req)
@@ -60,17 +77,54 @@ represents the whole file.
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		quiet, _, err := res.Request().Option("quiet").Bool()
+		quiet, _, err := req.Option("quiet").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		if quiet {
-			ch, _ := fsutil.ListKeys(fs)
-			res.SetOutput(&chanWriter{ch, "", 0, false})
+		all, _, err := req.Option("all").Bool()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		objs := req.Arguments()
+		keys := make([]k.Key, 0)
+		paths := make([]string, 0)
+		for _, obj := range objs {
+			if filepath.IsAbs(obj) {
+				paths = append(paths, obj)
+			} else {
+				keys = append(keys, k.B58KeyDecode(obj))
+			}
+		}
+		if len(keys) > 0 && len(paths) > 0 {
+			res.SetError(errors.New("Cannot specify both hashes and paths."), cmds.ErrNormal)
+			return
+		}
+
+		var ch <-chan fsutil.ListRes
+		if len(keys) > 0 {
+			ch, _ = fsutil.ListByKey(fs, keys)
+		} else if all && len(paths) == 0 && quiet {
+			ch, _ = fsutil.ListKeys(fs)
+		} else if all && len(paths) == 0 {
+			ch, _ = fsutil.ListAll(fs)
+		} else if !all && len(paths) == 0 {
+			ch, _ = fsutil.ListWholeFile(fs)
+		} else if all {
+			ch, _ = fsutil.List(fs, func(r fsutil.ListRes) bool {
+				return pathMatch(paths, r.FilePath)
+			})
 		} else {
-			ch, _ := fsutil.ListAll(fs)
-			res.SetOutput(&chanWriter{ch, "", 0, false})
+			ch, _ = fsutil.List(fs, func(r fsutil.ListRes) bool {
+				return r.WholeFile() && pathMatch(paths, r.FilePath)
+			})
+		}
+
+		if quiet {
+			res.SetOutput(&chanWriter{ch: ch, quiet: true})
+		} else {
+			res.SetOutput(&chanWriter{ch: ch})
 		}
 	},
 	Marshalers: cmds.MarshalerMap{
@@ -78,6 +132,22 @@ represents the whole file.
 			return res.(io.Reader), nil
 		},
 	},
+}
+
+func pathMatch(match_list []string, path string) bool {
+	for _, to_match := range match_list {
+		if to_match[len(to_match)-1] == filepath.Separator {
+			if strings.HasPrefix(path, to_match) {
+				return true
+			}
+		} else {
+			if to_match == path {
+				return true
+			}
+		}
+	}
+	return false
+
 }
 
 var lsFiles = &cmds.Command{
@@ -98,7 +168,7 @@ file names are printed, otherwise the fields are as follows:
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		quiet, _, err := res.Request().Option("quiet").Bool()
+		quiet, _, err := req.Option("quiet").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -118,6 +188,7 @@ type chanWriter struct {
 	buf    string
 	offset int
 	errors bool
+	quiet  bool
 }
 
 func (w *chanWriter) Read(p []byte) (int, error) {
@@ -131,7 +202,11 @@ func (w *chanWriter) Read(p []byte) (int, error) {
 		} else if fsutil.AnError(res.Status) {
 			w.errors = true
 		}
-		w.buf = res.Format()
+		if w.quiet {
+			w.buf = fmt.Sprintf("%s\n", res.MHash())
+		} else {
+			w.buf = res.Format()
+		}
 	}
 	sz := copy(p, w.buf[w.offset:])
 	w.offset += sz
@@ -168,7 +243,10 @@ var verifyFileStore = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Verify objects in filestore",
 		ShortDescription: `
-Verify nodes in the filestore.  The output is:
+Verify <hash> nodes in the filestore.  If no hashes are specified then
+verify everything in the filestore.
+
+The output is:
   <status> [<type> <filepath> <offset> <size> [<modtime>]]
 where <type>, <filepath>, <offset>, <size> and <modtime> are the same
 as in the "ls" command and <status> is one of
@@ -180,8 +258,8 @@ as in the "ls" command and <status> is one of
   incomplete: some of the blocks of the tree could not be read
 
   changed: the contents of the backing file have changed
-  no-file: the backing file can not be found
-  error:   the backing file can be found but could not be read
+  no-file: the backing file could not be found
+  error:   the backing file was found but could not be read
 
   ERROR:   the block could not be read due to an internal error
 
@@ -196,9 +274,8 @@ as in the "ls" command and <status> is one of
           the filestore
  
 If --basic is specified then just scan leaf nodes to verify that they
-are still valid.  Otherwise attempt to reconstruct the contents of of
-all nodes and also check for orphan nodes (unless --skip-orphans is
-also specified).
+are still valid.  Otherwise attempt to reconstruct the contents of
+all nodes and check for orphan nodes if applicable.
 
 The --level option specifies how thorough the checks should be.  A
 current meaning of the levels are:
@@ -209,10 +286,13 @@ current meaning of the levels are:
 
 The --verbose option specifies what to output.  The current values are:
   7-9: show everything
-  5-6: don't show child nodes with a status of: ok, <blank>, or complete
+  5-6: don't show child nodes unless there is a problem
   3-4: don't show child nodes
-  0-2: don't child nodes and don't show root nodes with of: ok or complete
+  0-2: don't show root nodes unless there is a problem
 `,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("hash", false, true, "Hashs of nodes to verify."),
 	},
 	Options: []cmds.Option{
 		cmds.BoolOption("basic", "Perform a basic scan of leaf nodes only."),
@@ -226,17 +306,22 @@ The --verbose option specifies what to output.  The current values are:
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		basic, _, err := res.Request().Option("basic").Bool()
+		args := req.Arguments()
+		keys := make([]k.Key, 0)
+		for _, key := range args {
+			keys = append(keys, k.B58KeyDecode(key))
+		}
+		basic, _, err := req.Option("basic").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		level, _, err := res.Request().Option("level").Int()
+		level, _, err := req.Option("level").Int()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		verbose, _, err := res.Request().Option("verbose").Int()
+		verbose, _, err := req.Option("verbose").Int()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -245,17 +330,24 @@ The --verbose option specifies what to output.  The current values are:
 			res.SetError(errors.New("level must be between 0-9"), cmds.ErrNormal)
 			return
 		}
-		skipOrphans, _, err := res.Request().Option("skip-orphans").Bool()
+		skipOrphans, _, err := req.Option("skip-orphans").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		if basic {
+
+		if basic && len(keys) == 0 {
 			ch, _ := fsutil.VerifyBasic(fs, level, verbose)
-			res.SetOutput(&chanWriter{ch, "", 0, false})
-		} else {
+			res.SetOutput(&chanWriter{ch: ch})
+		} else if basic {
+			ch, _ := fsutil.VerifyKeys(keys, node, fs, level)
+			res.SetOutput(&chanWriter{ch: ch})
+		} else if len(keys) == 0 {
 			ch, _ := fsutil.VerifyFull(node, fs, level, verbose, skipOrphans)
-			res.SetOutput(&chanWriter{ch, "", 0, false})
+			res.SetOutput(&chanWriter{ch: ch})
+		} else {
+			ch, _ := fsutil.VerifyKeysFull(keys, node, fs, level, verbose)
+			res.SetOutput(&chanWriter{ch: ch})
 		}
 	},
 	Marshalers: cmds.MarshalerMap{
@@ -298,7 +390,7 @@ will do a "verify --level 0" and is used to remove any "orphan" nodes.
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		quiet, _, err := res.Request().Option("quiet").Bool()
+		quiet, _, err := req.Option("quiet").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -342,22 +434,22 @@ var rmFilestoreObjs = &cmds.Command{
 			return
 		}
 		opts := fsutil.DeleteOpts{}
-		quiet, _, err := res.Request().Option("quiet").Bool()
+		quiet, _, err := req.Option("quiet").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		opts.Force, _, err = res.Request().Option("force").Bool()
+		opts.Force, _, err = req.Option("force").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		opts.Direct, _, err = res.Request().Option("direct").Bool()
+		opts.Direct, _, err = req.Option("direct").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		opts.IgnorePins, _, err = res.Request().Option("ignore-pins").Bool()
+		opts.IgnorePins, _, err = req.Option("ignore-pins").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -416,12 +508,12 @@ var repairPins = &cmds.Command{
 		if err != nil {
 			return
 		}
-		dryRun, _, err := res.Request().Option("dry-run").Bool()
+		dryRun, _, err := req.Option("dry-run").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		skipRoot, _, err := res.Request().Option("skip-root").Bool()
+		skipRoot, _, err := req.Option("skip-root").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -486,6 +578,96 @@ var rmDups = &cmds.Command{
 			}
 		}()
 		res.SetOutput(r)
+	},
+	Marshalers: cmds.MarshalerMap{
+		cmds.Text: func(res cmds.Response) (io.Reader, error) {
+			return res.(io.Reader), nil
+		},
+	},
+}
+
+var fsUpgrade = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Upgrade filestore to most recent format.",
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		_, fs, err := extractFilestore(req)
+		if err != nil {
+			return
+		}
+		r, w := io.Pipe()
+		go func() {
+			err := fsutil.Upgrade(w, fs)
+			if err != nil {
+				w.CloseWithError(err)
+			} else {
+				w.Close()
+			}
+		}()
+		res.SetOutput(r)
+	},
+	Marshalers: cmds.MarshalerMap{
+		cmds.Text: func(res cmds.Response) (io.Reader, error) {
+			return res.(io.Reader), nil
+		},
+	},
+}
+
+var moveIntoFilestore = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Move a Node representing file into the filestore.",
+		ShortDescription: `
+Move a node representing a file into the filestore.  For now the old
+copy is not removed.  Use "filestore rm-dups" to remove the old copy.
+`,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("hash", true, false, "Multi-hash to move."),
+		cmds.StringArg("file", false, false, "File to store node's content in."),
+	},
+	Options: []cmds.Option{},
+	Run: func(req cmds.Request, res cmds.Response) {
+		node, err := req.InvocContext().GetNode()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		offline := !node.OnlineMode()
+		args := req.Arguments()
+		if len(args) < 1 {
+			res.SetError(errors.New("Must specify hash."), cmds.ErrNormal)
+			return
+		}
+		if len(args) > 2 {
+			res.SetError(errors.New("Too many arguments."), cmds.ErrNormal)
+			return
+		}
+		mhash := args[0]
+		key := k.B58KeyDecode(mhash)
+		path := ""
+		if len(args) == 2 {
+			path = args[1]
+		} else {
+			path = mhash
+		}
+		if offline {
+			path, err = filepath.Abs(path)
+			if err != nil {
+				res.SetError(err, cmds.ErrNormal)
+				return
+			}
+		}
+		rdr, wtr := io.Pipe()
+		go func() {
+			err := fsutil.ConvertToFile(node, key, path)
+			if err != nil {
+				wtr.CloseWithError(err)
+				return
+			}
+			wtr.Close()
+		}()
+		res.SetOutput(rdr)
+		return
 	},
 	Marshalers: cmds.MarshalerMap{
 		cmds.Text: func(res cmds.Response) (io.Reader, error) {
