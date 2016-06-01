@@ -72,13 +72,13 @@ func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Adder{
-		mr: mr,
+		mr:         mr,
 		ctx:        ctx,
-		Pinning:    p,
-		Blockstore: bs,
-		DAG:        ds,
+		pinning:    p,
+		blockstore: bs,
+		dagService: ds,
 		Progress:   false,
 		Hidden:     true,
 		Pin:        true,
@@ -92,9 +92,9 @@ func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.
 // Internal structure for holding the switches passed to the `add` call
 type Adder struct {
 	ctx        context.Context
-	Pinning    pin.Pinner
-	Blockstore bstore.GCBlockstore
-	DAG        dag.DAGService
+	pinning    pin.Pinner
+	blockstore bstore.GCBlockstore
+	dagService dag.DAGService
 	Out        chan interface{}
 	Progress   bool
 	Hidden     bool
@@ -107,6 +107,7 @@ type Adder struct {
 	mr         *mfs.Root
 	unlocker   bs.Unlocker
 	tempRoot   key.Key
+	AddOpts  interface{}
 }
 
 // Perform the actual add & pin locally, outputting results to reader
@@ -118,11 +119,11 @@ func (adder Adder) add(reader io.Reader) (*dag.Node, error) {
 
 	if adder.Trickle {
 		return importer.BuildTrickleDagFromReader(
-			adder.DAG,
+			adder.dagService,
 			chnk)
 	}
 	return importer.BuildDagFromReader(
-		adder.DAG,
+		adder.dagService,
 		chnk)
 }
 
@@ -139,7 +140,7 @@ func (adder *Adder) RootNode() (*dag.Node, error) {
 
 	// if not wrapping, AND one root file, use that hash as root.
 	if !adder.Wrap && len(root.Links) == 1 {
-		root, err = root.Links[0].GetNode(adder.ctx, adder.DAG)
+		root, err = root.Links[0].GetNode(adder.ctx, adder.dagService)
 		if err != nil {
 			return nil, err
 		}
@@ -158,21 +159,21 @@ func (adder *Adder) PinRoot() error {
 		return nil
 	}
 
-	rnk, err := adder.DAG.Add(root)
+	rnk, err := adder.dagService.Add(root)
 	if err != nil {
 		return err
 	}
 
 	if adder.tempRoot != "" {
-		err := adder.Pinning.Unpin(adder.ctx, adder.tempRoot, true)
+		err := adder.pinning.Unpin(adder.ctx, adder.tempRoot, true)
 		if err != nil {
 			return err
 		}
 		adder.tempRoot = rnk
 	}
 
-	adder.Pinning.PinWithMode(rnk, pin.Recursive)
-	return adder.Pinning.Flush()
+	adder.pinning.PinWithMode(rnk, pin.Recursive)
+	return adder.pinning.Flush()
 }
 
 func (adder *Adder) Finalize() (*dag.Node, error) {
@@ -364,7 +365,7 @@ func (adder *Adder) addNode(node *dag.Node, path string) error {
 
 // Add the given file while respecting the adder.
 func (adder *Adder) AddFile(file files.File) error {
-	adder.unlocker = adder.Blockstore.PinLock()
+	adder.unlocker = adder.blockstore.PinLock()
 	defer func() {
 		adder.unlocker.Unlock()
 	}()
@@ -390,7 +391,7 @@ func (adder *Adder) addFile(file files.File) error {
 		}
 
 		dagnode := &dag.Node{Data: sdata}
-		_, err = adder.DAG.Add(dagnode)
+		_, err = adder.dagService.Add(dagnode)
 		if err != nil {
 			return err
 		}
@@ -452,14 +453,14 @@ func (adder *Adder) addDir(dir files.File) error {
 }
 
 func (adder *Adder) maybePauseForGC() error {
-	if adder.Blockstore.GCRequested() {
+	if adder.blockstore.GCRequested() {
 		err := adder.PinRoot()
 		if err != nil {
 			return err
 		}
 
 		adder.unlocker.Unlock()
-		adder.unlocker = adder.Blockstore.PinLock()
+		adder.unlocker = adder.blockstore.PinLock()
 	}
 	return nil
 }
