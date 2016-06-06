@@ -3,29 +3,76 @@
 The filestore is a work-in-progress datastore that stores the unixfs
 data component of blocks in files on the filesystem instead of in the
 block itself.  The main use of the datastore is to add content to IPFS
-without duplicating the content in the IPFS datastore
+without duplicating the content in the IPFS datastore.
+
+The filestore is developed on Debian (GNU/Linux) but should also work
+on MacOS X or other Unix like systems.  It might also work on Windows
+as long as absolute paths are used, but this is completely untested.
 
 ## Quick start
 
-To add a file to IPFS without copying, first bring the daemon offline
-and then use `add --no-copy` or to add a directory use `add -r
---no-copy`.  (Throughout this document all command are assumed to
-start with `ipfs` so `add --no-copy` really mains `ipfs add
---no-copy`).  For example to add the file `hello.txt` use:
+To add a file to IPFS without copying, use `filestore add -P` or to add a
+directory use `filestore add -P -r`.  (Throughout this document all
+command are assumed to start with `ipfs` so `filestore add` really
+mains `ipfs filestore add`).  For example to add the file `hello.txt`
+use:
 ```
-  ipfs add --no-copy hello.txt
+  ipfs filestore add -P hello.txt
 ```
+The file or directory will then be added.  You can now try to retrieve
+it from another node such as the ipfs.io gateway.
 
-The file or directory will then be added.  You can now bring the
-daemon online and try to retrieve it from another node such as the
-ipfs.io gateway.
+Paths stores in the filestore must be absolute.  You can either
+provide an absolute path or use one of `-P` (`--physical`) or -l
+(`--logical`) to create one.  The `-P` (or `--physical`) means to make
+a absolute path from the physical working directory without any
+symbolic links in it; the -l (or `--logical`) means to use the `PWD`
+env. variable if possible.
 
-To add a file to IPFS without copying and the daemon online you must
-first enable API.ServerSideAdds using:
+If adding a file with the daemon online the same file must be
+accessible via the path provided by both the client and the server.
+Without extra options it is currently not possible to add directories
+with the daemon online.
+
+If the contents of an added file have changed the block will become
+invalid.  By default, the filestore uses the modification-time to
+determine if a file has changed.  If the mod-time of a file differs
+from what is expected the contents of the block are rechecked by
+recomputing the multihash and failing if the hash differs from what is
+expected.
+
+Adding files to the filestore will generally be faster than adding
+blocks normally as less data is copied around.  Retrieving blocks from
+the filestore takes about the same time when the hash is not
+recomputed, when it is retrieval is slower.
+
+## Adding all files in a directory
+
+The example script in filestore/examples/add-dir.sh can be used to add
+all files in a directly to the filestore and keep the filestore in
+sync with what is the directory.  Just specify the directory you want
+to add or update.  The first time it is run it will add all the files
+in the directory.  When run again it will readd any modified files.  A
+good use of this script is to add it to crontab to rerun the script
+periodically.
+
+The script is fairly basic but serves as an example of how to use the
+filestore.  A more sophisticated application could use i-notify or a
+similar interface to readd files as they are changed.
+
+## Server side adds
+
+When adding a file when the daemon is online.  The client sends both
+the file contents and path to the server, and the server will then
+verify that the same content is available via the specified path by
+reading the file again on the server side.  To avoid this extra
+overhead and allow directories to be added when the daemon is
+online server side paths can be used.
+
+To use this feature you must first enable API.ServerSideAdds using:
 ```
-  ipfs config API.ServerSideAdds --bool true
+  ipfs config Filestore.APIServerSidePaths --bool true
 ```
-This will enable adding files from the filesystem the server is on.
 *This option should be used with care since it will allow anyone with
 access to the API Server access to any files that the daemon has
 permission to read.* For security reasons it is probably best to only
@@ -33,24 +80,12 @@ enable this on a single user system and to make sure the API server is
 configured to the default value of only binding to the localhost
 (`127.0.0.1`).
 
-With the API.ServerSideAdds option enabled you can add files using
-`add-ss --no-copy`.  Since the file will read by the daemon the
-absolute path must be specified.  For example, to add the file
-`hello.txt` in the local directory use something like:
+With the `Filestore.APIServerSidePaths` option enabled you can add
+files using `filestore add -S`.  For example, to add the file
+`hello.txt` in the current directory use:
 ```
-  ipfs add-ss --no-copy "`pwd`"/hello.txt
+  ipfs filestore add -S -P hello.txt
 ```
-
-If the contents of an added file have changed the block will become invalid.
-The filestore uses the modification-time to determine if a file has changed.
-If the mod-time of a file differs from what is expected the contents
-of the block are rechecked by recomputing the multihash and failing if
-the hash differs from what is expected.
-
-Adding files to the filestore will generally be faster than adding
-blocks normally as less data is copied around.  Retrieving blocks from
-the filestore takes about the same time when the hash is not
-recomputed, when it is retrieval is slower.
 
 ## Verifying blocks
 
@@ -121,7 +156,7 @@ do not cause any problems, they just take up a small amount of space.
 
 When removing blocks `filestore clean` will generally remove any pins
 associated with the blocks.  However, it will not handle `indirect`
-pins.  For example if you add a directory using `add -r --no-copy` and
+pins.  For example if you add a directory using `filestore add -r` and
 some of the files become invalid the recursive pin will become invalid
 and needs to be fixed.
 
@@ -156,8 +191,8 @@ option.  Individual blocks can be removed with the `--direct` option.
 ## Duplicate blocks.
 
 If a block is already in the datastore when adding and then readded
-with `--no-copy` the block will be added to the filestore but the now
-duplicate block will still exists in the normal datastore.
+with `filestore add` the block will be added to the filestore but the
+now duplicate block will still exists in the normal datastore.
 Furthermore, since the block is likely to be pinned it will not be
 removed when `repo gc` in run.  This is nonoptimal and will eventually
 be fixed.  For now, you can remove duplicate blocks by running
