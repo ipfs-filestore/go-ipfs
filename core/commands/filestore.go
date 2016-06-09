@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -74,7 +73,11 @@ same as for "ipfs add".
 		if cwd != "" {
 			paths := req.Arguments()
 			for i, path := range paths {
-				paths[i] = filestore.AbsPath(cwd, path)
+				abspath, err := filestore.AbsPath(cwd, path)
+				if err != nil {
+					return err
+				}
+				paths[i] = abspath
 			}
 			req.SetArguments(paths)
 		}
@@ -132,8 +135,8 @@ func addFileStoreOpts() []cmds.Option {
 func getFiles(req cmds.Request) error {
 	inputs := req.Arguments()
 	for _, fn := range inputs {
-		if !path.IsAbs(fn) {
-			return errors.New("File path must be absolute.")
+		if !filepath.IsAbs(fn) {
+			return fmt.Errorf("File path must be absolute: %s", fn)
 		}
 	}
 	_, fileArgs, err := cli.ParseArgs(req, inputs, nil, AddCmd.Arguments, nil)
