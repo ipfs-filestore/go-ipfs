@@ -9,13 +9,13 @@ import (
 	//"bytes"
 	//"time"
 
-	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore/query"
 	k "github.com/ipfs/go-ipfs/blocks/key"
+	ds "gx/ipfs/QmZ6A6P6AMo8SR3jXAwzTuSU6B9R2Y4eqW2yW9VvfUayDN/go-datastore"
+	"gx/ipfs/QmZ6A6P6AMo8SR3jXAwzTuSU6B9R2Y4eqW2yW9VvfUayDN/go-datastore/query"
 	//mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
 	b58 "gx/ipfs/QmT8rehPR3F6bmwL6zjUN8XpiDBFFpMP2myPdC6ApsWfJf/go-base58"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
+	logging "gx/ipfs/QmYtB7Qge8cJpXc4irsEp8zRqfnZMBeB7aTrMEkPk67DRv/go-log"
 )
 
 var log = logging.Logger("filestore")
@@ -52,6 +52,7 @@ func (d *Datastore) Put(key ds.Key, value interface{}) (err error) {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	// See if we have the whole file in the block
 	if dataObj.Offset == 0 && !dataObj.WholeFile() {
@@ -64,8 +65,6 @@ func (d *Datastore) Put(key ds.Key, value interface{}) (err error) {
 			dataObj.Flags |= WholeFile
 		}
 	}
-
-	file.Close()
 
 	return d.PutDirect(key, dataObj)
 }
@@ -130,6 +129,7 @@ func (d *Datastore) GetData(key ds.Key, val *DataObj, verify int, update bool) (
 		if err != nil {
 			return nil, err
 		}
+		defer file.Close()
 		_, err = file.Seek(int64(val.Offset), 0)
 		if err != nil {
 			return nil, err
