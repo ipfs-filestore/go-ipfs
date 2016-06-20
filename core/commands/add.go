@@ -156,13 +156,12 @@ You can now refer to the added file in a gateway, like so:
 		if nocopy {
 			fs, ok := n.Repo.SubDatastore(fsrepo.RepoFilestore).(*filestore.Datastore)
 			if !ok {
-				res.SetError(errors.New("Could not extract filestore"), cmds.ErrNormal)
+				res.SetError(errors.New("could not extract filestore"), cmds.ErrNormal)
 				return
 			}
-			blockstore := filestore_support.NewBlockstore(n.Blockstore, n.Repo.Datastore(), fs)
+			blockstore := filestore_support.NewBlockstore(n.Blockstore, fs)
 			blockService := bserv.New(blockstore, n.Exchange)
 			dagService := dag.NewDAGService(blockService)
-			dagService.NodeToBlock = filestore_support.NodeToBlock{}
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
 		} else {
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG, useRoot)

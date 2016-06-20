@@ -40,7 +40,7 @@ func (n *Node) unmarshal(encoded []byte) error {
 // Marshal encodes a *Node instance into a new byte slice.
 // The conversion uses an intermediate PBNode.
 func (n *Node) Marshal() ([]byte, error) {
-	pbn := n.GetPBNode()
+	pbn := n.getPBNode()
 	data, err := pbn.Marshal()
 	if err != nil {
 		return data, fmt.Errorf("Marshal failed. %v", err)
@@ -48,19 +48,7 @@ func (n *Node) Marshal() ([]byte, error) {
 	return data, nil
 }
 
-func (n *Node) MarshalNoData() ([]byte, error) {
-	pbn := n.GetPBNode()
-	if n.DataPtr != nil && len(n.DataPtr.AltData) > 0 {
-		pbn.Data = n.DataPtr.AltData
-	}
-	data, err := pbn.Marshal()
-	if err != nil {
-		return data, fmt.Errorf("Marshal failed. %v", err)
-	}
-	return data, nil
-}
-
-func (n *Node) GetPBNode() *pb.PBNode {
+func (n *Node) getPBNode() *pb.PBNode {
 	pbn := &pb.PBNode{}
 	if len(n.Links) > 0 {
 		pbn.Links = make([]*pb.PBLink, len(n.Links))
@@ -77,7 +65,6 @@ func (n *Node) GetPBNode() *pb.PBNode {
 	if len(n.Data) > 0 {
 		pbn.Data = n.Data
 	}
-
 	return pbn
 }
 
