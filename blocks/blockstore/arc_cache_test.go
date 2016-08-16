@@ -9,7 +9,7 @@ import (
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
-func testArcCached(bs GCBlockstore, ctx context.Context) (*arccache, error) {
+func testArcCached(bs Blockstore, ctx context.Context) (*arccache, error) {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
