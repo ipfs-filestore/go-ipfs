@@ -13,6 +13,7 @@ import (
 	path "github.com/ipfs/go-ipfs/path"
 	pin "github.com/ipfs/go-ipfs/pin"
 	repo "github.com/ipfs/go-ipfs/repo"
+	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 	cfg "github.com/ipfs/go-ipfs/repo/config"
 	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
 	dsync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
@@ -21,6 +22,9 @@ import (
 	goprocessctx "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess/context"
 	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+
+	"github.com/ipfs/go-ipfs/filestore"
+	"github.com/ipfs/go-ipfs/filestore/support"
 )
 
 type BuildCfg struct {
@@ -134,7 +138,7 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	}
 
 	var err error
-	bs := bstore.NewBlockstore(n.Repo.Datastore())
+	bs := bstore.NewBlockstoreWPrefix(n.Repo.Datastore(), fsrepo.CacheMount)
 	opts := bstore.DefaultCacheOpts()
 	conf, err := n.Repo.Config()
 	if err != nil {
@@ -146,10 +150,19 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 		opts.HasBloomFilterSize = 0
 	}
 
-	n.Blockstore, err = bstore.CachedBlockstore(bs, ctx, opts)
+	cbs, err := bstore.CachedBlockstore(bs, ctx, opts)
 	if err != nil {
 		return err
 	}
+
+	mounts := []bstore.Mount{{fsrepo.CacheMount, cbs}}
+	
+	if n.Repo.DirectMount(fsrepo.FilestoreMount) != nil {
+		fs := bstore.NewBlockstoreWPrefix(n.Repo.Datastore(), fsrepo.FilestoreMount)
+		mounts = append(mounts, bstore.Mount{fsrepo.FilestoreMount, fs})
+	}
+
+	n.Blockstore = bstore.NewMultiBlockstore(mounts...)
 
 	rcfg, err := n.Repo.Config()
 	if err != nil {
@@ -170,7 +183,12 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	}
 
 	n.Blocks = bserv.New(n.Blockstore, n.Exchange)
-	n.DAG = dag.NewDAGService(n.Blocks)
+	dag := dag.NewDAGService(n.Blocks)
+	if fs,ok :=  n.Repo.DirectMount(fsrepo.FilestoreMount).(*filestore.Datastore); ok {
+		n.LinkService = filestore_support.NewLinkService(fs)
+		dag.LinkService = n.LinkService
+	}
+	n.DAG = dag
 	n.Pinning, err = pin.LoadPinner(n.Repo.Datastore(), n.DAG)
 	if err != nil {
 		// TODO: we should move towards only running 'NewPinner' explicity on

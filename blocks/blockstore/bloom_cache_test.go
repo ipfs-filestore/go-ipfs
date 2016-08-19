@@ -14,7 +14,7 @@ import (
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
-func testBloomCached(bs GCBlockstore, ctx context.Context) (*bloomcache, error) {
+func testBloomCached(bs Blockstore, ctx context.Context) (*bloomcache, error) {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
