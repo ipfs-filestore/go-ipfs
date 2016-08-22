@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	//"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,9 +33,7 @@ var FileStoreCmd = &cmds.Command{
 		"verify":   verifyFileStore,
 		"rm":       rmFilestoreObjs,
 		"clean":    cleanFileStore,
-		"fix-pins": repairPins,
-		"unpinned": fsUnpinned,
-		"rm-dups":  rmDups,
+		"dups":     fsDups,
 		"upgrade":  fsUpgrade,
 		"mv":       moveIntoFilestore,
 	},
@@ -123,11 +121,24 @@ same as for 'ipfs add'.
 
 func addFileStoreOpts() []cmds.Option {
 	var opts []cmds.Option
-	opts = append(opts, AddCmd.Options...)
+
+	foundPinOpt := false
+	for _, opt := range AddCmd.Options {
+		if opt.Names()[0] == pinOptionName {
+			opts = append(opts, cmds.BoolOption(pinOptionName, opt.Description()).Default(false))
+			foundPinOpt = true
+		} else {
+			opts = append(opts, opt)
+		}
+	}
+	if !foundPinOpt {
+		panic("internal error: foundPinOpt is false")
+	}
+
 	opts = append(opts,
 		cmds.BoolOption("server-side", "S", "Read file on server."),
-		cmds.BoolOption("l", "logical", "Create absolute path using PWD from environment."),
-		cmds.BoolOption("P", "physical", "Create absolute path using a system call."),
+		cmds.BoolOption("logical", "l", "Create absolute path using PWD from environment."),
+		cmds.BoolOption("physical", "P", "Create absolute path using a system call."),
 	)
 	return opts
 }
@@ -684,71 +695,15 @@ will do a "verify --level 0" and is used to remove any "orphan" nodes.
 
 var rmFilestoreObjs = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Remove objects from the filestore.",
+		Tagline: "Remove blocks from the filestore.",
 	},
-	Arguments: []cmds.Argument{
-		cmds.StringArg("hash", true, true, "Multi-hashes to remove."),
-	},
-	Options: []cmds.Option{
-		cmds.BoolOption("quiet", "q", "Produce less output."),
-		cmds.BoolOption("force", "Do not abort in non-fatal erros."),
-		cmds.BoolOption("direct", "Delete individual blocks."),
-		cmds.BoolOption("ignore-pins", "Ignore pins."),
-	},
+	Arguments: blockRmCmd.Arguments,
+	Options:   blockRmCmd.Options,
 	Run: func(req cmds.Request, res cmds.Response) {
-		node, fs, err := extractFilestore(req)
-		_ = fs
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		opts := fsutil.DeleteOpts{}
-		quiet, _, err := req.Option("quiet").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		opts.Force, _, err = req.Option("force").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		opts.Direct, _, err = req.Option("direct").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		opts.IgnorePins, _, err = req.Option("ignore-pins").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		hashes := req.Arguments()
-		rdr, wtr := io.Pipe()
-		var rmWtr io.Writer = wtr
-		if quiet {
-			rmWtr = ioutil.Discard
-		}
-		go func() {
-			keys := make([]k.Key, len(hashes))
-			for i, mhash := range hashes {
-				keys[i] = k.B58KeyDecode(mhash)
-			}
-			err = fsutil.Delete(req, rmWtr, node, fs, opts, keys...)
-			if err != nil {
-				wtr.CloseWithError(err)
-				return
-			}
-			wtr.Close()
-		}()
-		res.SetOutput(rdr)
-		return
+		blockRmRun(req, res, fsrepo.FilestoreMount)
 	},
-	Marshalers: cmds.MarshalerMap{
-		cmds.Text: func(res cmds.Response) (io.Reader, error) {
-			return res.(io.Reader), nil
-		},
-	},
+	PostRun: blockRmCmd.PostRun,
+	Type:    blockRmCmd.Type,
 }
 
 func extractFilestore(req cmds.Request) (*core.IpfsNode, *filestore.Datastore, error) {
@@ -764,46 +719,12 @@ func extractFilestore(req cmds.Request) (*core.IpfsNode, *filestore.Datastore, e
 	return node, fs, nil
 }
 
-var repairPins = &cmds.Command{
+var fsDups = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Repair pins to non-existent or incomplete objects.",
+		Tagline: "List duplicate blocks stored outside filestore.",
 	},
-	Options: []cmds.Option{
-		cmds.BoolOption("dry-run", "n", "Report on what will be done."),
-		cmds.BoolOption("skip-root", "Don't repin root in broken recursive pin."),
-	},
-	Run: func(req cmds.Request, res cmds.Response) {
-		node, fs, err := extractFilestore(req)
-		if err != nil {
-			return
-		}
-		dryRun, _, err := req.Option("dry-run").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		skipRoot, _, err := req.Option("skip-root").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		r, w := io.Pipe()
-		go func() {
-			defer w.Close()
-			fsutil.RepairPins(node, fs, w, dryRun, skipRoot)
-		}()
-		res.SetOutput(r)
-	},
-	Marshalers: cmds.MarshalerMap{
-		cmds.Text: func(res cmds.Response) (io.Reader, error) {
-			return res.(io.Reader), nil
-		},
-	},
-}
-
-var fsUnpinned = &cmds.Command{
-	Helptext: cmds.HelpText{
-		Tagline: "List unpinned whole-file objects in filestore.",
+	Arguments: []cmds.Argument{
+		cmds.StringArg("what", false, true, "any of: pinned unpinned"),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		node, fs, err := extractFilestore(req)
@@ -812,34 +733,7 @@ var fsUnpinned = &cmds.Command{
 		}
 		r, w := io.Pipe()
 		go func() {
-			err := fsutil.Unpinned(node, fs, w)
-			if err != nil {
-				w.CloseWithError(err)
-			} else {
-				w.Close()
-			}
-		}()
-		res.SetOutput(r)
-	},
-	Marshalers: cmds.MarshalerMap{
-		cmds.Text: func(res cmds.Response) (io.Reader, error) {
-			return res.(io.Reader), nil
-		},
-	},
-}
-
-var rmDups = &cmds.Command{
-	Helptext: cmds.HelpText{
-		Tagline: "Remove duplicate blocks stored outside filestore.",
-	},
-	Run: func(req cmds.Request, res cmds.Response) {
-		node, fs, err := extractFilestore(req)
-		if err != nil {
-			return
-		}
-		r, w := io.Pipe()
-		go func() {
-			err := fsutil.RmDups(w, fs, node.Blockstore)
+			err := fsutil.Dups(w, fs, node.Blockstore, node.Pinning, req.Arguments()...)
 			if err != nil {
 				w.CloseWithError(err)
 			} else {

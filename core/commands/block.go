@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-ipfs/blocks"
+	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
+	util "github.com/ipfs/go-ipfs/blocks/blockstore/util"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
@@ -26,7 +28,7 @@ func (bs BlockStat) String() string {
 
 var BlockCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Manipulate raw IPFS blocks.",
+		Tagline: "Interact with raw IPFS blocks.",
 		ShortDescription: `
 'ipfs block' is a plumbing command used to manipulate raw ipfs blocks.
 Reads from stdin or writes to stdout, and <key> is a base58 encoded
@@ -35,9 +37,11 @@ multihash.
 	},
 
 	Subcommands: map[string]*cmds.Command{
-		"stat": blockStatCmd,
-		"get":  blockGetCmd,
-		"put":  blockPutCmd,
+		"stat":   blockStatCmd,
+		"get":    blockGetCmd,
+		"put":    blockPutCmd,
+		"rm":     blockRmCmd,
+		"locate": blockLocateCmd,
 	},
 }
 
@@ -103,7 +107,7 @@ It outputs to stdout, and <key> is a base58 encoded multihash.
 
 var blockPutCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Stores input as an IPFS block.",
+		Tagline: "Store input as an IPFS block.",
 		ShortDescription: `
 'ipfs block put' is a plumbing command for storing raw ipfs blocks.
 It reads from stdin, and <key> is a base58 encoded multihash.
@@ -184,4 +188,134 @@ func getBlockForKey(req cmds.Request, skey string) (blocks.Block, error) {
 
 	log.Debugf("ipfs block: got block with key: %q", b.Key())
 	return b, nil
+}
+
+var blockRmCmd = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Remove IPFS block(s).",
+		ShortDescription: `
+'ipfs block rm' is a plumbing command for removing raw ipfs blocks.
+It takes a list of base58 encoded multihashs to remove.
+`,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("hash", true, true, "Bash58 encoded multihash of block(s) to remove."),
+	},
+	Options: []cmds.Option{
+		cmds.BoolOption("force", "f", "Ignore nonexistent blocks.").Default(false),
+		cmds.BoolOption("quiet", "q", "Write minimal output.").Default(false),
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		blockRmRun(req, res, "")
+	},
+	PostRun: func(req cmds.Request, res cmds.Response) {
+		if res.Error() != nil {
+			return
+		}
+		outChan, ok := res.Output().(<-chan interface{})
+		if !ok {
+			res.SetError(u.ErrCast(), cmds.ErrNormal)
+			return
+		}
+		res.SetOutput(nil)
+
+		err := util.ProcRmOutput(outChan, res.Stdout(), res.Stderr())
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+		}
+	},
+	Type: util.RemovedBlock{},
+}
+
+func blockRmRun(req cmds.Request, res cmds.Response, prefix string) {
+	n, err := req.InvocContext().GetNode()
+	if err != nil {
+		res.SetError(err, cmds.ErrNormal)
+		return
+	}
+	hashes := req.Arguments()
+	force, _, _ := req.Option("force").Bool()
+	quiet, _, _ := req.Option("quiet").Bool()
+	keys := make([]key.Key, 0, len(hashes))
+	for _, hash := range hashes {
+		k := key.B58KeyDecode(hash)
+		keys = append(keys, k)
+	}
+	outChan := make(chan interface{})
+	err = util.RmBlocks(n.Blockstore, n.Pinning, outChan, keys, util.RmBlocksOpts{
+		Quiet:  quiet,
+		Force:  force,
+		Prefix: prefix,
+	})
+	if err != nil {
+		res.SetError(err, cmds.ErrNormal)
+		return
+	}
+	res.SetOutput((<-chan interface{})(outChan))
+}
+
+type BlockLocateRes struct {
+	Key string
+	Res []bs.LocateInfo
+}
+
+var blockLocateCmd = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Locate an IPFS block.",
+		ShortDescription: `
+'ipfs block rm' is a plumbing command for locating which
+sub-datastores block(s) are located in.
+`,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("hash", true, true, "Bash58 encoded multihash of block(s) to check."),
+	},
+	Options: []cmds.Option{
+		cmds.BoolOption("quiet", "q", "Write minimal output.").Default(false),
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		n, err := req.InvocContext().GetNode()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		hashes := req.Arguments()
+		outChan := make(chan interface{})
+		res.SetOutput((<-chan interface{})(outChan))
+		go func() {
+			defer close(outChan)
+			for _, hash := range hashes {
+				key := key.B58KeyDecode(hash)
+				ret := n.Blockstore.Locate(key)
+				outChan <- &BlockLocateRes{hash, ret}
+			}
+		}()
+		return
+	},
+	PostRun: func(req cmds.Request, res cmds.Response) {
+		if res.Error() != nil {
+			return
+		}
+		quiet, _, _ := req.Option("quiet").Bool()
+		outChan, ok := res.Output().(<-chan interface{})
+		if !ok {
+			res.SetError(u.ErrCast(), cmds.ErrNormal)
+			return
+		}
+		res.SetOutput(nil)
+
+		for out := range outChan {
+			ret := out.(*BlockLocateRes)
+			for _, inf := range ret.Res {
+				if quiet && inf.Error == nil {
+					fmt.Fprintf(res.Stdout(), "%s %s\n", ret.Key, inf.Prefix)
+				} else if !quiet && inf.Error == nil {
+					fmt.Fprintf(res.Stdout(), "%s %s found\n", ret.Key, inf.Prefix)
+				} else if !quiet {
+					fmt.Fprintf(res.Stdout(), "%s %s error  %s\n", ret.Key, inf.Prefix, inf.Error.Error())
+				}
+			}
+		}
+	},
+	Type: BlockLocateRes{},
 }

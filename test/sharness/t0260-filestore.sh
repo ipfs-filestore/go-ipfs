@@ -102,16 +102,78 @@ test_expect_success "testing filestore rm" '
 '
 
 test_expect_success "testing file removed" '
-  test_must_fail cat QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > expected
+  test_must_fail ipfs cat QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > expected
 '
 
-test_expect_success "testing filestore rm-dups" '
-  ipfs add mountdir/hello.txt > /dev/null &&
-  ipfs filestore add "`pwd`"/mountdir/hello.txt > /dev/null &&
-  ipfs filestore rm-dups > rm-dups-output &&
-  grep -q "duplicate QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN" rm-dups-output &&
-  ipfs cat QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > expected &&
-  test_cmp expected mountdir/hello.txt
+#
+# Duplicate block and pin testing
+#
+
+test_expect_success "make sure block doesn't exist" '
+  test_must_fail ipfs cat QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN &&
+  ipfs filestore ls QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > res &&
+  test ! -s res
+'
+
+test_expect_success "create filestore block" '
+  ipfs filestore add --logical mountdir/hello.txt &&
+  ipfs cat QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
+'
+
+test_expect_success "add duplicate block with --allow-dup" '
+   ipfs add --allow-dup mountdir/hello.txt
+'
+
+test_expect_success "add unpinned duplicate block" '
+  echo "Hello Mars!" > mountdir/hello2.txt &&
+  ipfs add --pin=false mountdir/hello2.txt &&
+  ipfs filestore add --logical mountdir/hello2.txt
+'
+
+cat <<EOF > locate_expect0
+QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN /blocks found
+QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN /filestore found
+EOF
+
+test_expect_success "ipfs block locate" '
+  ipfs block locate QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > locate_actual0 &&
+  test_cmp locate_expect0 locate_actual0
+'
+
+test_expect_success "testing filestore dups pinned" '
+  ipfs filestore dups pinned > dups-actual &&
+  echo QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > dups-expected &&
+  test_cmp dups-actual dups-expected
+'
+
+test_expect_success "testing filestore dups unpinned" '
+  ipfs filestore dups unpinned > dups-actual &&
+  echo QmPrrHqJzto9m7SyiRzarwkqPcCSsKR2EB1AyqJfe8L8tN > dups-expected &&
+  test_cmp dups-actual dups-expected
+'
+
+test_expect_success "testing filestore dups" '
+  ipfs filestore dups > dups-out &&
+  grep QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN dups-out &&
+  grep QmPrrHqJzto9m7SyiRzarwkqPcCSsKR2EB1AyqJfe8L8tN dups-out
+'
+
+test_expect_success "ipfs block rm pinned but duplicate block" '
+  ipfs block rm QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
+'
+
+cat <<EOF > locate_expect1
+QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN /blocks error  blockstore: block not found
+QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN /filestore found
+EOF
+
+test_expect_success "ipfs block locate" '
+  ipfs block locate QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > locate_actual1
+  test_cmp locate_expect1 locate_actual1
+'
+
+test_expect_success "ipfs filestore rm pinned block fails" '
+  test_must_fail ipfs filestore rm QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
 '
 
 #
@@ -137,12 +199,12 @@ EOF
 
 clear_pins
 
-test_expect_success "testing filestore add -r" '
+test_expect_success "testing filestore add -r --pin" '
   mkdir adir &&
   echo "Hello Worlds!" > adir/file1 &&
   echo "HELLO WORLDS!" > adir/file2 &&
   random 5242880 41 > adir/file3 &&
-  ipfs filestore add -r "`pwd`"/adir | LC_ALL=C sort > add_actual &&
+  ipfs filestore add -r --pin "`pwd`"/adir | LC_ALL=C sort > add_actual &&
   test_cmp add_expect add_actual
 '
 
@@ -150,49 +212,7 @@ test_expect_success "testing rm of indirect pinned file" '
   test_must_fail ipfs filestore rm QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
 '
 
-test_expect_success "testing forced rm of indirect pinned file" '
-  ipfs filestore rm --force QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
-'
-
-
-cat <<EOF > pin_ls_expect
-QmQhAyoEzSg5JeAzGDCx63aPekjSGKeQaYs4iRf4y6Qm6w direct
-QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb recursive
-QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH recursive
-EOF
-
-test_expect_success "testing filestore fix-pins" '
-  ipfs filestore fix-pins > fix_pins_actual &&
-  ipfs pin ls | LC_ALL=C sort | grep -v " indirect" > pin_ls_actual &&
-  test_cmp pin_ls_expect pin_ls_actual
-'
-
 clear_pins
-
-cat <<EOF > pin_ls_expect
-QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb recursive
-QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH recursive
-EOF
-
-test_expect_success "testing filestore fix-pins --skip-root" '
-  ipfs filestore add -r "`pwd`"/adir > add_actual &&
-  ipfs filestore rm --force QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN > rm_actual
-  ipfs filestore fix-pins --skip-root > fix_pins_actual &&
-  ipfs pin ls | LC_ALL=C sort | grep -v " indirect" > pin_ls_actual &&
-  test_cmp pin_ls_expect pin_ls_actual
-'
-
-clear_pins
-
-cat <<EOF > unpinned_expect
-QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb
-QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH
-EOF
-
-test_expect_success "testing filestore unpinned" '
-  ipfs filestore unpinned  | LC_ALL=C sort > unpinned_actual &&
-  test_cmp unpinned_expect unpinned_actual
-'
 
 test_expect_success "testing filestore mv" '
   HASH=QmQHRQ7EU8mUXLXkvqKWPubZqtxYPbwaqYo6NXSfS9zdCc &&
