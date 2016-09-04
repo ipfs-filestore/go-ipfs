@@ -11,9 +11,17 @@ test_description="Test filestore"
 
 test_init_ipfs
 
+test_expect_success "can't use filestore unless it is enabled" '
+  test_must_fail ipfs filestore ls
+'
+
+test_enable_filestore
+
 test_add_cat_file "filestore add" "`pwd`"
 
 test_post_add "filestore add" "`pwd`"
+
+test_add_empty_file "filestore add" "`pwd`"
 
 test_add_cat_5MB "filestore add" "`pwd`"
 
@@ -52,6 +60,7 @@ EOF
 cat <<EOF > ls_expect
 QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb
 QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH
+QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH
 EOF
 
 test_expect_success "testing filestore ls" '
@@ -63,7 +72,8 @@ test_expect_success "testing filestore verify" '
   test_must_fail ipfs filestore verify > verify_actual &&
   grep -q "changed  QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH" verify_actual &&
   grep -q "no-file  QmQ8jJxa1Ts9fKsyUXcdYRHHUkuhJ69f82CF8BNX14ovLT" verify_actual &&
-  grep -q "incomplete QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb" verify_actual
+  grep -q "incomplete QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb" verify_actual &&
+  grep -q "ok       $EMPTY_HASH" verify_actual
 '
 
 test_expect_success "tesing re-adding file after change" '
@@ -74,6 +84,7 @@ test_expect_success "tesing re-adding file after change" '
 cat <<EOF > ls_expect
 QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb
 QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
+QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH
 EOF
 
 test_expect_success "tesing filestore clean invalid" '
@@ -84,6 +95,7 @@ test_expect_success "tesing filestore clean invalid" '
 
 cat <<EOF > ls_expect
 QmZm53sWMaAQ59x56tFox8X9exJFELWC33NLjK6m8H7CpN
+QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH
 EOF
 
 test_expect_success "tesing filestore clean incomplete" '
@@ -229,23 +241,13 @@ test_expect_success "testing filestore mv" '
 '
 
 test_expect_success "testing filestore mv result" '
-  ipfs filestore verify -l9 > verify.out &&
+  ipfs filestore verify -l9 QmQHRQ7EU8mUXLXkvqKWPubZqtxYPbwaqYo6NXSfS9zdCc > verify.out &&
   grep -q "ok \+QmQHRQ7EU8mUXLXkvqKWPubZqtxYPbwaqYo6NXSfS9zdCc " verify.out
 '
 
 #
 # Additional add tests
 #
-
-cat <<EOF > add_expect
-added QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH `pwd`/emptyfile
-EOF
-
-test_expect_success "testing adding of empty file" '
-  cat /dev/null > emptyfile
-  ipfs filestore add "`pwd`"/emptyfile > add_actual &&
-  test_cmp add_expect add_actual
-'
 
 test_add_cat_200MB "filestore add" "`pwd`"
 

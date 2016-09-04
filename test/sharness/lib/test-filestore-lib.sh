@@ -2,6 +2,13 @@ client_err() {
     printf "$@\n\nUse 'ipfs add --help' for information about this command\n"
 }
 
+
+test_enable_filestore() {
+    test_expect_success "enable filestore" '
+        ipfs filestore enable
+    '
+}
+
 test_add_cat_file() {
     cmd=$1
     dir=$2
@@ -24,6 +31,33 @@ test_add_cat_file() {
     test_expect_success "ipfs cat output looks good" '
     	echo "Hello Worlds!" >expected &&
     	test_cmp expected actual
+    '
+}
+
+test_add_empty_file() {
+    cmd=$1
+    dir=$2
+
+    EMPTY_HASH="QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH"
+
+    test_expect_success "ipfs add on empty file succeeds" '
+        ipfs block rm -f $EMPTY_HASH &&
+        cat /dev/null >mountdir/empty.txt &&
+        ipfs $cmd "$dir"/mountdir/empty.txt >actual
+    '
+
+    test_expect_success "ipfs add on empty file output looks good" '
+        echo "added $EMPTY_HASH "$dir"/mountdir/empty.txt" >expected &&
+        test_cmp expected actual
+    '
+
+    test_expect_success "ipfs cat on empty file succeeds" '
+        ipfs cat "$EMPTY_HASH" >actual
+    '
+
+    test_expect_success "ipfs cat on empty file output looks good" '
+        cat /dev/null >expected &&
+        test_cmp expected actual
     '
 }
 
@@ -197,9 +231,21 @@ filestore_test_w_daemon() {
 
     test_launch_ipfs_daemon $opt
 
+    test_expect_success "can't enable filestore while daemon is running" '
+        test_must_fail ipfs filestore enable
+    '
+
+    test_kill_ipfs_daemon
+
+    test_enable_filestore
+
+    test_launch_ipfs_daemon $opt
+
     test_add_cat_file "filestore add " "`pwd`"
 
     test_post_add "filestore add " "`pwd`"
+
+    test_add_empty_file "filestore add " "`pwd`"
 
     test_add_cat_5MB "filestore add " "`pwd`"
 
@@ -233,6 +279,8 @@ filestore_test_w_daemon() {
     test_add_cat_file "filestore add -S" "`pwd`"
 
     test_post_add "filestore add -S" "`pwd`"
+
+    test_add_empty_file "filestore add -S" "`pwd`"
 
     test_add_cat_5MB "filestore add -S" "`pwd`"
 
