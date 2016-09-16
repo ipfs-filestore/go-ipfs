@@ -220,7 +220,7 @@ will verify a block if the modification time of the backing file has
 changed.  This default works well in most cases, but can miss some
 changes, espacally if the filesystem only tracks file modification
 times with a resolution of one second (HFS+, used by OS X) or less
-(FAT32).  A value of `Always`, always checks block and the value of
+(FAT32).  A value of `Always`, always checks blocks, and the value of
 `Never`, never checks blocks.
 
 ## Upgrading the filestore
