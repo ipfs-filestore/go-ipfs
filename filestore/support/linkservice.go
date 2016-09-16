@@ -15,17 +15,21 @@ type linkservice struct {
 	fs *Datastore
 }
 
-func (ls *linkservice) Get(key key.Key) ([]*dag.Link, error) {
-	dsKey := key.DsKey()
-	dataObj, err := ls.fs.GetDirect(dsKey)
-	if err == ds.ErrNotFound {
-		return nil, dag.ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
+func GetLinks(dataObj *DataObj) ([]*dag.Link, error) {
 	res, err := dag.DecodeProtobuf(dataObj.Data)
 	if err != nil {
 		return nil, err
 	}
 	return res.Links, nil
+}
+
+func (ls *linkservice) Get(key key.Key) ([]*dag.Link, error) {
+	dsKey := key.DsKey()
+	_, dataObj, err := ls.fs.GetDirect(dsKey)
+	if err == ds.ErrNotFound {
+		return nil, dag.ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return GetLinks(dataObj)
 }

@@ -1,21 +1,21 @@
 package blockstore_util
 
 import (
-	//"errors"
 	"fmt"
 	"io"
-	//"io/ioutil"
-	//"strings"
 
-	//"github.com/ipfs/go-ipfs/blocks"
 	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	"github.com/ipfs/go-ipfs/pin"
 	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	//mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
-	//u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 )
 
+// RemovedBlock is used to respresent the result of removing a block.
+// If a block was removed successfully than the Error string will be
+// empty.  If a block could not be removed than Error will contain the
+// reason the block could not be removed.  If the removal was aborted
+// due to a fatal error Hash will be be empty, Error will contain the
+// reason, and no more results will be sent.
 type RemovedBlock struct {
 	Hash  string `json:",omitempty"`
 	Error string `json:",omitempty"`
@@ -43,22 +43,7 @@ func RmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, k
 		unlocker := mbs.GCLock()
 		defer unlocker.Unlock()
 
-		stillOkay := make([]key.Key, 0, len(keys))
-		res, err := pins.CheckIfPinned(keys...)
-		if err != nil {
-			out <- &RemovedBlock{Error: fmt.Sprintf("pin check failed: %s", err)}
-			return
-		}
-		for _, r := range res {
-			if !r.Pinned() || AvailableElsewhere(mbs, prefix, r.Key) {
-				stillOkay = append(stillOkay, r.Key)
-			} else {
-				out <- &RemovedBlock{
-					Hash:  r.Key.String(),
-					Error: r.String(),
-				}
-			}
-		}
+		stillOkay := FilterPinned(mbs, pins, out, keys, prefix)
 
 		for _, k := range stillOkay {
 			err := blocks.DeleteBlock(k)
@@ -74,6 +59,26 @@ func RmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, k
 	return nil
 }
 
+func FilterPinned(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, keys []key.Key, prefix string) []key.Key {
+	stillOkay := make([]key.Key, 0, len(keys))
+	res, err := pins.CheckIfPinned(keys...)
+	if err != nil {
+		out <- &RemovedBlock{Error: fmt.Sprintf("pin check failed: %s", err)}
+		return nil
+	}
+	for _, r := range res {
+		if !r.Pinned() || AvailableElsewhere(mbs, prefix, r.Key) {
+			stillOkay = append(stillOkay, r.Key)
+		} else {
+			out <- &RemovedBlock{
+				Hash:  r.Key.String(),
+				Error: r.String(),
+			}
+		}
+	}
+	return stillOkay
+}
+
 func AvailableElsewhere(mbs bs.MultiBlockstore, prefix string, key key.Key) bool {
 	locations := mbs.Locate(key)
 	for _, loc := range locations {
@@ -84,22 +89,12 @@ func AvailableElsewhere(mbs bs.MultiBlockstore, prefix string, key key.Key) bool
 	return false
 }
 
-type RmError struct {
-	Fatal bool
-	Msg   string
-}
-
-func (err RmError) Error() string { return err.Msg }
-
-func ProcRmOutput(in <-chan interface{}, sout io.Writer, serr io.Writer) *RmError {
+func ProcRmOutput(in <-chan interface{}, sout io.Writer, serr io.Writer) error {
 	someFailed := false
 	for res := range in {
 		r := res.(*RemovedBlock)
 		if r.Hash == "" && r.Error != "" {
-			return &RmError{
-				Fatal: true,
-				Msg:   fmt.Sprintf("aborted: %s", r.Error),
-			}
+			return fmt.Errorf("aborted: %s", r.Error)
 		} else if r.Error != "" {
 			someFailed = true
 			fmt.Fprintf(serr, "cannot remove %s: %s\n", r.Hash, r.Error)
@@ -108,9 +103,7 @@ func ProcRmOutput(in <-chan interface{}, sout io.Writer, serr io.Writer) *RmErro
 		}
 	}
 	if someFailed {
-		return &RmError{
-			Msg: fmt.Sprintf("some blocks not removed"),
-		}
+		return fmt.Errorf("some blocks not removed")
 	}
 	return nil
 }

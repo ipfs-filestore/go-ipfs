@@ -13,7 +13,7 @@ import (
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 )
 
-func Dups(wtr io.Writer, fs *Datastore, bs b.MultiBlockstore, pins pin.Pinner, args ...string) error {
+func Dups(wtr io.Writer, fs *Basic, bs b.MultiBlockstore, pins pin.Pinner, args ...string) error {
 	showPinned, showUnpinned := false, false
 	if len(args) == 0 {
 		showPinned, showUnpinned = true, true
@@ -28,10 +28,7 @@ func Dups(wtr io.Writer, fs *Datastore, bs b.MultiBlockstore, pins pin.Pinner, a
 			return fmt.Errorf("invalid arg: %s", arg)
 		}
 	}
-	ls, err := ListKeys(fs)
-	if err != nil {
-		return err
-	}
+	ls := ListKeys(fs)
 	dups := make([]k.Key, 0)
 	for res := range ls {
 		key, err := k.KeyFromDsKey(res.Key)
@@ -49,6 +46,9 @@ func Dups(wtr io.Writer, fs *Datastore, bs b.MultiBlockstore, pins pin.Pinner, a
 		return nil
 	}
 	res, err := pins.CheckIfPinned(dups...)
+	if err != nil {
+		return err
+	}
 	for _, r := range res {
 		if showPinned && r.Pinned() {
 			fmt.Fprintf(wtr, "%s\n", r.Key)

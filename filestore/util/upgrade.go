@@ -12,20 +12,22 @@ import (
 )
 
 func Upgrade(wtr io.Writer, fs *Datastore) error {
-	ls, err := ListAll(fs)
-	if err != nil {
-		return err
-	}
+	iter := fs.NewIterator()
 	cnt := 0
-	for r := range ls {
-		dsKey := r.Key
-		key, err := k.KeyFromDsKey(r.Key)
+	for iter.Next() {
+		origKey := iter.Key()
+		dsKey := origKey
+		key, err := k.KeyFromDsKey(origKey)
 		if err != nil {
-			key = k.Key(r.Key.String()[1:])
+			key = k.Key(origKey.String()[1:])
 			dsKey = key.DsKey()
 		}
+		bytes, val, err := iter.Value()
+		if err != nil {
+			return err
+		}
 		if len(dsKey.String()) != 56 {
-			data, err := fs.GetData(r.Key, r.DataObj, VerifyNever, true);
+			data, err := GetData(nil, origKey, bytes, val, VerifyNever)
 			if err != nil {
 				fmt.Fprintf(wtr, "error: could not fix invalid key %s: %s\n",
 					key.String(), err.Error())
@@ -33,14 +35,14 @@ func Upgrade(wtr io.Writer, fs *Datastore) error {
 				key = k.Key(u.Hash(data))
 				dsKey = key.DsKey()
 			}
-				
+
 		}
-		err = fs.PutDirect(dsKey, r.DataObj)
+		_, err = fs.Update(dsKey.Bytes(), bytes, val)
 		if err != nil {
 			return err
 		}
-		if !dsKey.Equal(r.Key) {
-			err = fs.Delete(r.Key)
+		if !dsKey.Equal(origKey) {
+			err = fs.Delete(origKey)
 			if err != nil {
 				return err
 			}

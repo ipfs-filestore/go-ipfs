@@ -38,6 +38,8 @@ var FileStoreCmd = &cmds.Command{
 		"mv":       moveIntoFilestore,
 		"enable":   FilestoreEnable,
 		"disable":  FilestoreDisable,
+
+		"verify-post-orphan": verifyPostOrphan,
 	},
 }
 
@@ -186,7 +188,7 @@ func (f *fixPath) NextFile() (files.File, error) {
 		return nil, errors.New("len(req.Files()) < len(req.Arguments())")
 	}
 	path := f.paths[0]
-	f.paths = f.paths[:1]
+	f.paths = f.paths[1:]
 	if f0.IsDirectory() {
 		return nil, errors.New("online directory add not supported, try '-S'")
 	} else {
@@ -255,11 +257,11 @@ func (f *dualFile) Read(res []byte) (int, error) {
 		if len(f.buf) == 0 && err == io.EOF {
 			return 0, io.EOF
 		} else {
-			return 0, errors.New("server side file is larger")
+			return 0, fmt.Errorf("%s: server side file is larger", f.FullPath())
 		}
 	}
 	if !bytes.Equal(res, f.buf) {
-		return 0, errors.New("file contents differ")
+		return 0, fmt.Errorf("%s: %s: server side file contents differ", f.content.FullPath(), f.local.FullPath())
 	}
 	return n, err1
 }
@@ -347,7 +349,7 @@ If <offset> is the special value "-" indicates a file root.
 	},
 }
 
-func getListing(fs *filestore.Datastore, objs []string, all bool, keysOnly bool) (<-chan fsutil.ListRes, error) {
+func procListArgs(objs []string) ([]k.Key, fsutil.ListFilter, error) {
 	keys := make([]k.Key, 0)
 	paths := make([]string, 0)
 	for _, obj := range objs {
@@ -358,28 +360,44 @@ func getListing(fs *filestore.Datastore, objs []string, all bool, keysOnly bool)
 		}
 	}
 	if len(keys) > 0 && len(paths) > 0 {
-		return nil, errors.New("cannot specify both hashes and paths")
+		return nil, nil, errors.New("cannot specify both hashes and paths")
+	}
+	if len(keys) > 0 {
+		return keys, nil, nil
+	} else if len(paths) > 0 {
+		return nil, func(r *filestore.DataObj) bool {
+			return pathMatch(paths, r.FilePath)
+		}, nil
+	} else {
+		return nil, nil, nil
+	}
+}
+
+func getListing(ds *filestore.Datastore, objs []string, all bool, keysOnly bool) (<-chan fsutil.ListRes, error) {
+	keys, listFilter, err := procListArgs(objs)
+	if err != nil {
+		return nil, err
 	}
 
-	var ch <-chan fsutil.ListRes
+	fs := ds.AsBasic()
+
 	if len(keys) > 0 {
-		ch, _ = fsutil.ListByKey(fs, keys)
-	} else if all && len(paths) == 0 && keysOnly {
-		ch, _ = fsutil.ListKeys(fs)
-	} else if all && len(paths) == 0 {
-		ch, _ = fsutil.ListAll(fs)
-	} else if !all && len(paths) == 0 {
-		ch, _ = fsutil.ListWholeFile(fs)
-	} else if all {
-		ch, _ = fsutil.List(fs, func(r fsutil.ListRes) bool {
-			return pathMatch(paths, r.FilePath)
-		})
-	} else {
-		ch, _ = fsutil.List(fs, func(r fsutil.ListRes) bool {
-			return r.WholeFile() && pathMatch(paths, r.FilePath)
-		})
+		return fsutil.ListByKey(fs, keys)
 	}
-	return ch, nil
+
+	// Add filter filters if necessary
+	if !all {
+		if listFilter == nil {
+			listFilter = fsutil.ListFilterWholeFile
+		} else {
+			origFilter := listFilter
+			listFilter = func(r *filestore.DataObj) bool {
+				return fsutil.ListFilterWholeFile(r) && origFilter(r)
+			}
+		}
+	}
+
+	return fsutil.List(fs, listFilter, keysOnly)
 }
 
 func pathMatch(match_list []string, path string) bool {
@@ -531,7 +549,8 @@ are the same as in the 'ls' command and <status> is one of:
   complete: all the blocks in the tree exists but no attempt was
             made to reconstruct the original data
 
-  incomplete: some of the blocks of the tree could not be read
+  problem: some of the blocks of the tree could not be read
+  incomplete: some of the blocks of the tree are missing
 
   changed: the contents of the backing file have changed
   no-file: the backing file could not be found
@@ -551,9 +570,15 @@ are the same as in the 'ls' command and <status> is one of:
 
 If any checks failed than a non-zero exit status will be returned.
  
-If --basic is specified then just scan leaf nodes to verify that they
-are still valid.  Otherwise attempt to reconstruct the contents of
-all nodes and check for orphan nodes if applicable.
+If --basic is specified linearly scan the leaf nodes to verify that they
+are still valid.  Otherwise attempt to reconstruct the contents of all
+nodes and check for orphan nodes if applicable.
+
+Otherwise, the nodes are recursively visited from the root node.  If
+--skip-orphans is not specified than the results are cached in memory in
+order to detect the orphans.  The cache is also used to avoid visiting
+the same node more than once.  Cached results are printed without any
+object info.
 
 The --level option specifies how thorough the checks should be.  The
 current meaning of the levels are:
@@ -564,18 +589,17 @@ current meaning of the levels are:
        contents of leaf nodes
 
 The --verbose option specifies what to output.  The current values are:
-  7-9: show everything
-  5-6: don't show child nodes unless there is a problem
-  3-4: don't show child nodes
-    2: don't show uninteresting root nodes
-  0-1: don't show uninteresting specified hashes
-uninteresting means a status of 'ok' or '<blank>'
+  0-1: show top-level nodes when status is not 'ok', 'complete' or '<blank>
+    2: in addition, show all nodes specified on command line
+  3-4: in addition, show all top-level nodes
+  5-6: in addition, show problem children
+  7-9: in addition, show all children
 
 If --porcelain is used us an alternative output is used that will not
 change between releases.  The output is:
-  <type0>\\t<status>\\t<hash>\\t<filename>
+  <type0>\t<status>\t<hash>\t<filename>
 where <type0> is either "root" for a file root or something else
-otherwise and \\t is a literal literal tab character.  <status> is the
+otherwise and \t is a literal literal tab character.  <status> is the
 same as normal except that <blank> is spelled out as "unchecked".  In
 addition to the modified output a non-zero exit status will only be
 returned on an error condition and not just because of failed checks.
@@ -593,6 +617,8 @@ returned) to avoid special cases when parsing the output.
 		cmds.IntOption("verbose", "v", "0-9 Verbose level.").Default(6),
 		cmds.BoolOption("porcelain", "Porcelain output."),
 		cmds.BoolOption("skip-orphans", "Skip check for orphans."),
+		cmds.BoolOption("no-obj-info", "q", "Just print the status and the hash."),
+		cmds.StringOption("incomplete-when", "Internal option."),
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		node, fs, err := extractFilestore(req)
@@ -601,55 +627,99 @@ returned) to avoid special cases when parsing the output.
 			return
 		}
 		args := req.Arguments()
-		keys := make([]k.Key, 0)
-		for _, key := range args {
-			keys = append(keys, k.B58KeyDecode(key))
-		}
-		basic, _, err := req.Option("basic").Bool()
+		keys, filter, err := procListArgs(args)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		level, _, err := req.Option("level").Int()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		verbose, _, err := req.Option("verbose").Int()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		porcelain, _, err := req.Option("porcelain").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
-		if level < 0 || level > 9 {
-			res.SetError(errors.New("level must be between 0-9"), cmds.ErrNormal)
-			return
-		}
-		skipOrphans, _, err := req.Option("skip-orphans").Bool()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
+		basic, _, _ := req.Option("basic").Bool()
+		porcelain, _, _ := req.Option("porcelain").Bool()
+
+		params := fsutil.VerifyParams{Filter: filter}
+		params.Level, _, _ = req.Option("level").Int()
+		params.Verbose, _, _ = req.Option("verbose").Int()
+		params.SkipOrphans, _, _ = req.Option("skip-orphans").Bool()
+		params.NoObjInfo, _, _ = req.Option("no-obj-info").Bool()
+		params.IncompleteWhen = getIncompleteWhenOpt(req)
 
 		var ch <-chan fsutil.ListRes
 		if basic && len(keys) == 0 {
-			ch, _ = fsutil.VerifyBasic(fs, level, verbose)
+			ch, err = fsutil.VerifyBasic(fs.AsBasic(), &params)
 		} else if basic {
-			ch, _ = fsutil.VerifyKeys(keys, node, fs, level, verbose)
+			ch, err = fsutil.VerifyKeys(keys, node, fs.AsBasic(), &params)
 		} else if len(keys) == 0 {
-			ch, _ = fsutil.VerifyFull(node, fs, level, verbose, skipOrphans)
+			snapshot, err0 := fs.GetSnapshot()
+			if err0 != nil {
+				res.SetError(err0, cmds.ErrNormal)
+				return
+			}
+			ch, err = fsutil.VerifyFull(node, snapshot, &params)
 		} else {
-			ch, _ = fsutil.VerifyKeysFull(keys, node, fs, level, verbose)
+			ch, err = fsutil.VerifyKeysFull(keys, node, fs.AsBasic(), &params)
+		}
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
 		}
 		if porcelain {
 			res.SetOutput(&chanWriter{ch: ch, format: formatPorcelain, ignoreFailed: true})
 		} else {
 			res.SetOutput(&chanWriter{ch: ch, format: formatDefault})
 		}
+	},
+	Marshalers: cmds.MarshalerMap{
+		cmds.Text: func(res cmds.Response) (io.Reader, error) {
+			return res.(io.Reader), nil
+		},
+	},
+}
+
+func getIncompleteWhenOpt(req cmds.Request) []string {
+	str, _, _ := req.Option("incomplete-when").String()
+	if str == "" {
+		return nil
+	} else {
+		return strings.Split(str, ",")
+	}
+}
+
+var verifyPostOrphan = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Verify objects in filestore and check for would be orphans.",
+		ShortDescription: `
+Like "verify" but perform an extra scan to check for would be orphans if
+"incomplete" blocks are removed.  Becuase of how it operates only the status
+and hashes are returned and the order in which blocks are reported in not
+stable.
+
+This is the method normally used by "clean".
+`,
+	},
+	Options: []cmds.Option{
+		cmds.IntOption("level", "l", "0-9, Verification level.").Default(6),
+		cmds.StringOption("incomplete-when", "Internal option."),
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		node, fs, err := extractFilestore(req)
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		level, _, _ := req.Option("level").Int()
+		incompleteWhen := getIncompleteWhenOpt(req)
+
+		snapshot, err := fs.GetSnapshot()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		ch, err := fsutil.VerifyPostOrphan(node, snapshot, level, incompleteWhen)
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		res.SetOutput(&chanWriter{ch: ch, format: formatDefault})
+		return
 	},
 	Marshalers: cmds.MarshalerMap{
 		cmds.Text: func(res cmds.Response) (io.Reader, error) {
@@ -669,14 +739,14 @@ can be any of "changed", "no-file", "error", "incomplete",
 and "no-file" and "full" is an alias for "invalid" "incomplete" and
 "orphan" (basically remove everything but "error").
 
-It does the removal in three passes.  If there is nothing specified to
-be removed in a pass that pass is skipped.  The first pass does a
-"verify --basic" and is used to remove any "changed", "no-file" or
-"error" nodes.  The second pass does a "verify --level 0
---skip-orphans" and will is used to remove any "incomplete" nodes due
-to missing children (the "--level 0" only checks for the existence of
-leaf nodes, but does not try to read the content).  The final pass
-will do a "verify --level 0" and is used to remove any "orphan" nodes.
+If incomplete is specified in combination with "changed", "no-file", or
+"error" than any nodes that will become incomplete, after the invalid leafs
+are removed, are also removed.  Similarly if "orphan" is specified in
+combination with "incomplete" any would be orphans are also removed.
+
+If the command is run with the daemon is running the check is done on a
+snapshot of the filestore and then blocks are only removed if they have not
+changed since the snapshot has taken.
 `,
 	},
 	Arguments: []cmds.Argument{
@@ -707,11 +777,11 @@ will do a "verify --level 0" and is used to remove any "orphan" nodes.
 		//res.SetOutput(&chanWriter{ch, "", 0, false})
 		return
 	},
-	Marshalers: cmds.MarshalerMap{
-		cmds.Text: func(res cmds.Response) (io.Reader, error) {
-			return res.(io.Reader), nil
-		},
-	},
+	//Marshalers: cmds.MarshalerMap{
+	//	cmds.Text: func(res cmds.Response) (io.Reader, error) {
+	//		return res.(io.Reader), nil
+	//	},
+	//},
 }
 
 var rmFilestoreObjs = &cmds.Command{
@@ -754,7 +824,7 @@ var fsDups = &cmds.Command{
 		}
 		r, w := io.Pipe()
 		go func() {
-			err := fsutil.Dups(w, fs, node.Blockstore, node.Pinning, req.Arguments()...)
+			err := fsutil.Dups(w, fs.AsBasic(), node.Blockstore, node.Pinning, req.Arguments()...)
 			if err != nil {
 				w.CloseWithError(err)
 			} else {
