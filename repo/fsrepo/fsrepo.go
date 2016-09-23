@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/mitchellh/go-homedir"
 	repo "github.com/ipfs/go-ipfs/repo"
 	"github.com/ipfs/go-ipfs/repo/common"
@@ -19,9 +19,9 @@ import (
 	mfsr "github.com/ipfs/go-ipfs/repo/fsrepo/migrations"
 	serialize "github.com/ipfs/go-ipfs/repo/fsrepo/serialize"
 	dir "github.com/ipfs/go-ipfs/thirdparty/dir"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	"gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/measure"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 	util "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	"gx/ipfs/QmeqtHtxGfcsfXiou7wqHJARWPKUTUcPdtSfSYYHp48dtQ/go-ds-measure"
 )
 
 var log = logging.Logger("fsrepo")
@@ -490,6 +490,14 @@ func (r *FSRepo) SetConfigKey(key string, value interface{}) error {
 		return err
 	}
 
+	// Load private key to guard against it being overwritten.
+	// NOTE: this is a temporary measure to secure this field until we move
+	// keys out of the config file.
+	pkval, err := common.MapGetKV(mapconf, config.PrivKeySelector)
+	if err != nil {
+		return err
+	}
+
 	// Get the type of the value associated with the key
 	oldValue, err := common.MapGetKV(mapconf, key)
 	ok := true
@@ -528,6 +536,11 @@ func (r *FSRepo) SetConfigKey(key string, value interface{}) error {
 	}
 
 	if err := common.MapSetKV(mapconf, key, value); err != nil {
+		return err
+	}
+
+	// replace private key, in case it was overwritten.
+	if err := common.MapSetKV(mapconf, config.PrivKeySelector, pkval); err != nil {
 		return err
 	}
 

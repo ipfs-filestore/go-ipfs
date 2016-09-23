@@ -1,14 +1,15 @@
 package network
 
 import (
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bsmsg "github.com/ipfs/go-ipfs/exchange/bitswap/message"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	protocol "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/protocol"
+	protocol "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/protocol"
+	peer "gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
-var ProtocolBitswap protocol.ID = "/ipfs/bitswap"
+var ProtocolBitswap protocol.ID = "/ipfs/bitswap/1.0.0"
+var ProtocolBitswapOld protocol.ID = "/ipfs/bitswap"
 
 // BitSwapNetwork provides network connectivity for BitSwap sessions
 type BitSwapNetwork interface {

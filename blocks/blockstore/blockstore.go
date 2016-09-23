@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dsns "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/namespace"
-	dsq "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/query"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dsns "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/namespace"
+	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
 var log = logging.Logger("blockstore")
@@ -33,8 +33,12 @@ type Blockstore interface {
 	DeleteBlock(key.Key) error
 	Has(key.Key) (bool, error)
 	Get(key.Key) (blocks.Block, error)
-	Put(blocks.Block) error
-	PutMany([]blocks.Block) error
+
+	// Put and PutMany return the blocks(s) actually added to the
+	// blockstore.  If a block already exists it will not be returned.
+	
+	Put(blocks.Block) (error, blocks.Block) 
+	PutMany([]blocks.Block) (error, []blocks.Block)
 
 	AllKeysChan(ctx context.Context) (<-chan key.Key, error)
 }
@@ -95,7 +99,7 @@ type blockstore struct {
 	rehash bool
 }
 
-func (bs *blockstore) RuntimeHashing(enabled bool) {
+func (bs *blockstore) HashOnRead(enabled bool) {
 	bs.rehash = enabled
 }
 
@@ -128,27 +132,29 @@ func (bs *blockstore) Get(k key.Key) (blocks.Block, error) {
 	}
 }
 
-func (bs *blockstore) Put(block blocks.Block) error {
+func (bs *blockstore) Put(block blocks.Block) (error, blocks.Block) {
 	k := block.Key().DsKey()
 
 	// Note: The Has Check is now done by the MultiBlockstore
 
-	return bs.datastore.Put(k, block.Data())
+	return bs.datastore.Put(k, block.RawData()), block
 }
 
-func (bs *blockstore) PutMany(blocks []blocks.Block) error {
+func (bs *blockstore) PutMany(blks []blocks.Block) (error, []blocks.Block) {
 	t, err := bs.datastore.Batch()
 	if err != nil {
-		return err
+		return err, nil
 	}
-	for _, b := range blocks {
+	added := make([]blocks.Block, 0, len(blks))
+	for _, b := range blks {
 		k := b.Key().DsKey()
-		err = t.Put(k, b.Data())
+		err = t.Put(k, b.RawData())
 		if err != nil {
-			return err
+			return err, nil
 		}
+		added = append(added, b)
 	}
-	return t.Commit()
+	return t.Commit(), added
 }
 
 func (bs *blockstore) Has(k key.Key) (bool, error) {

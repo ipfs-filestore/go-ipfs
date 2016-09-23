@@ -12,11 +12,11 @@ import (
 	"time"
 
 	pb "github.com/ipfs/go-ipfs/diagnostics/pb"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	host "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/host"
-	inet "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net"
-	protocol "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/protocol"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	host "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/host"
+	inet "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/net"
+	protocol "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/protocol"
+	peer "gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
 	ctxio "gx/ipfs/QmX6DhWrpBB5NtadXmPSXYNdVvuLfJXoFNMvUMoVvP5UJa/go-context/io"
 	ggio "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/io"
 	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
@@ -26,7 +26,8 @@ import (
 var log = logging.Logger("diagnostics")
 
 // ProtocolDiag is the diagnostics protocol.ID
-var ProtocolDiag protocol.ID = "/ipfs/diagnostics"
+var ProtocolDiag protocol.ID = "/ipfs/diag/net/1.0.0"
+var ProtocolDiagOld protocol.ID = "/ipfs/diagnostics"
 
 var ErrAlreadyRunning = errors.New("diagnostic with that ID already running")
 
@@ -54,6 +55,7 @@ func NewDiagnostics(self peer.ID, h host.Host) *Diagnostics {
 	}
 
 	h.SetStreamHandler(ProtocolDiag, d.handleNewStream)
+	h.SetStreamHandler(ProtocolDiagOld, d.handleNewStream)
 	return d
 }
 
@@ -203,7 +205,7 @@ func (d *Diagnostics) getDiagnosticFromPeers(ctx context.Context, peers map[peer
 }
 
 func (d *Diagnostics) getDiagnosticFromPeer(ctx context.Context, p peer.ID, pmes *pb.Message) (<-chan *DiagInfo, error) {
-	s, err := d.host.NewStream(ctx, ProtocolDiag, p)
+	s, err := d.host.NewStream(ctx, p, ProtocolDiag, ProtocolDiagOld)
 	if err != nil {
 		return nil, err
 	}

@@ -7,8 +7,10 @@ import (
 	"github.com/ipfs/go-ipfs/blocks"
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/mock"
-	mocknet "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net/mock"
+
+	mocknet "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/net/mock"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	cid "gx/ipfs/QmfSc2xehWmWLnwwYR91Y8QF4xdASypTFVknutoKQS3GHp/go-cid"
 )
 
 func TestBitswapWithoutRouting(t *testing.T) {
@@ -56,7 +58,7 @@ func TestBitswapWithoutRouting(t *testing.T) {
 	block1 := blocks.NewBlock([]byte("block1"))
 
 	// put 1 before
-	if err := nodes[0].Blockstore.Put(block0); err != nil {
+	if err, _ := nodes[0].Blockstore.Put(block0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,10 +70,10 @@ func TestBitswapWithoutRouting(t *testing.T) {
 		}
 
 		log.Debugf("%d %s get block.", i, n.Identity)
-		b, err := n.Blocks.GetBlock(ctx, block0.Key())
+		b, err := n.Blocks.GetBlock(ctx, cid.NewCidV0(block0.Multihash()))
 		if err != nil {
 			t.Error(err)
-		} else if !bytes.Equal(b.Data(), block0.Data()) {
+		} else if !bytes.Equal(b.RawData(), block0.RawData()) {
 			t.Error("byte comparison fail")
 		} else {
 			log.Debug("got block: %s", b.Key())
@@ -79,16 +81,16 @@ func TestBitswapWithoutRouting(t *testing.T) {
 	}
 
 	// put 1 after
-	if err := nodes[1].Blockstore.Put(block1); err != nil {
+	if err, _ := nodes[1].Blockstore.Put(block1); err != nil {
 		t.Fatal(err)
 	}
 
 	//  get it out.
 	for _, n := range nodes {
-		b, err := n.Blocks.GetBlock(ctx, block1.Key())
+		b, err := n.Blocks.GetBlock(ctx, cid.NewCidV0(block1.Multihash()))
 		if err != nil {
 			t.Error(err)
-		} else if !bytes.Equal(b.Data(), block1.Data()) {
+		} else if !bytes.Equal(b.RawData(), block1.RawData()) {
 			t.Error("byte comparison fail")
 		} else {
 			log.Debug("got block: %s", b.Key())

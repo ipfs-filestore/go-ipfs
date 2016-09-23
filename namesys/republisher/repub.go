@@ -5,21 +5,21 @@ import (
 	"sync"
 	"time"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	namesys "github.com/ipfs/go-ipfs/namesys"
 	pb "github.com/ipfs/go-ipfs/namesys/pb"
 	path "github.com/ipfs/go-ipfs/path"
-	"github.com/ipfs/go-ipfs/routing"
-	dhtpb "github.com/ipfs/go-ipfs/routing/dht/pb"
 
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	pstore "gx/ipfs/QmQdnfvZQuhdT93LNc5bos52wAmdr3G2p6G8teLJMEN32P/go-libp2p-peerstore"
-	goprocess "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess"
-	gpctx "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess/context"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
+	goprocess "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	gpctx "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/context"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	peer "gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
 	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+	routing "gx/ipfs/QmcoQiBzRaaVv1DZbbXoDWiEtvDN94Ca1DcwnQKK2tP92s/go-libp2p-routing"
+	pstore "gx/ipfs/QmdMfSLMDBDYhtc4oF3NYGCZr5dy4wQb6Ji26N4D4mdxa2/go-libp2p-peerstore"
+	recpb "gx/ipfs/Qme7D9iKHYxwq28p6PzCymywsYSRBx9uyGzW7qNB3s9VbC/go-libp2p-record/pb"
 )
 
 var errNoEntry = errors.New("no previous entry")
@@ -31,7 +31,7 @@ var DefaultRebroadcastInterval = time.Hour * 4
 const DefaultRecordLifetime = time.Hour * 24
 
 type Republisher struct {
-	r  routing.IpfsRouting
+	r  routing.ValueStore
 	ds ds.Datastore
 	ps pstore.Peerstore
 
@@ -44,7 +44,7 @@ type Republisher struct {
 	entries   map[peer.ID]struct{}
 }
 
-func NewRepublisher(r routing.IpfsRouting, ds ds.Datastore, ps pstore.Peerstore) *Republisher {
+func NewRepublisher(r routing.ValueStore, ds ds.Datastore, ps pstore.Peerstore) *Republisher {
 	return &Republisher{
 		r:              r,
 		ps:             ps,
@@ -115,7 +115,7 @@ func (rp *Republisher) getLastVal(k key.Key) (path.Path, uint64, error) {
 	}
 
 	val := ival.([]byte)
-	dhtrec := new(dhtpb.Record)
+	dhtrec := new(recpb.Record)
 	err = proto.Unmarshal(val, dhtrec)
 	if err != nil {
 		return "", 0, err

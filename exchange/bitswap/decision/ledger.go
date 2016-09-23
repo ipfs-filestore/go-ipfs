@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	wl "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	peer "gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
 // keySet is just a convenient alias for maps of keys, where we only care
@@ -87,7 +87,7 @@ func (l *ledger) CancelWant(k key.Key) {
 	l.wantList.Remove(k)
 }
 
-func (l *ledger) WantListContains(k key.Key) (wl.Entry, bool) {
+func (l *ledger) WantListContains(k key.Key) (*wl.Entry, bool) {
 	return l.wantList.Contains(k)
 }
 

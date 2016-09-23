@@ -12,7 +12,7 @@ import (
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	files "github.com/ipfs/go-ipfs/commands/files"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 )
 
@@ -256,7 +256,7 @@ func parseOpts(args []string, root *cmds.Command) (
 	return
 }
 
-const msgStdinInfo = "ipfs: Reading from %s; send Ctrl-d to stop.\n"
+const msgStdinInfo = "ipfs: Reading from %s; send Ctrl-d to stop."
 
 func parseArgs(inputs []string, stdin *os.File, argDefs []cmds.Argument, recursive, hidden bool, root *cmds.Command) ([]string, []files.File, error) {
 	// ignore stdin on Windows
@@ -406,6 +406,10 @@ func appendFile(fpath string, argDef *cmds.Argument, recursive, hidden bool) (fi
 		if err != nil {
 			return nil, err
 		}
+		cwd, err = filepath.EvalSymlinks(cwd)
+		if err != nil {
+			return nil, err
+		}
 		fpath = cwd
 	}
 
@@ -468,6 +472,7 @@ func newMessageReader(r io.ReadCloser, msg string) io.ReadCloser {
 func (r *messageReader) Read(b []byte) (int, error) {
 	if !r.done {
 		fmt.Fprintln(os.Stderr, r.message)
+		r.done = true
 	}
 
 	return r.r.Read(b)

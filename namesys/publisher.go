@@ -6,22 +6,22 @@ import (
 	"fmt"
 	"time"
 
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	pb "github.com/ipfs/go-ipfs/namesys/pb"
 	path "github.com/ipfs/go-ipfs/path"
 	pin "github.com/ipfs/go-ipfs/pin"
-	routing "github.com/ipfs/go-ipfs/routing"
-	dhtpb "github.com/ipfs/go-ipfs/routing/dht/pb"
-	record "github.com/ipfs/go-ipfs/routing/record"
 	ft "github.com/ipfs/go-ipfs/unixfs"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
+
+	ci "gx/ipfs/QmVoi5es8D5fNHZDqoW6DgDAEPEV5hQp8GBz161vZXiwpQ/go-libp2p-crypto"
+	peer "gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
+	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+	routing "gx/ipfs/QmcoQiBzRaaVv1DZbbXoDWiEtvDN94Ca1DcwnQKK2tP92s/go-libp2p-routing"
+	record "gx/ipfs/Qme7D9iKHYxwq28p6PzCymywsYSRBx9uyGzW7qNB3s9VbC/go-libp2p-record"
+	dhtpb "gx/ipfs/Qme7D9iKHYxwq28p6PzCymywsYSRBx9uyGzW7qNB3s9VbC/go-libp2p-record/pb"
 )
 
 // ErrExpiredRecord should be returned when an ipns record is
@@ -37,12 +37,12 @@ var PublishPutValTimeout = time.Minute
 // ipnsPublisher is capable of publishing and resolving names to the IPFS
 // routing system.
 type ipnsPublisher struct {
-	routing routing.IpfsRouting
+	routing routing.ValueStore
 	ds      ds.Datastore
 }
 
 // NewRoutingPublisher constructs a publisher for the IPFS Routing name system.
-func NewRoutingPublisher(route routing.IpfsRouting, ds ds.Datastore) *ipnsPublisher {
+func NewRoutingPublisher(route routing.ValueStore, ds ds.Datastore) *ipnsPublisher {
 	if ds == nil {
 		panic("nil datastore")
 	}
@@ -134,7 +134,7 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 	return d, ok
 }
 
-func PutRecordToRouting(ctx context.Context, k ci.PrivKey, value path.Path, seqnum uint64, eol time.Time, r routing.IpfsRouting, id peer.ID) error {
+func PutRecordToRouting(ctx context.Context, k ci.PrivKey, value path.Path, seqnum uint64, eol time.Time, r routing.ValueStore, id peer.ID) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -181,7 +181,7 @@ func waitOnErrChan(ctx context.Context, errs chan error) error {
 	}
 }
 
-func PublishPublicKey(ctx context.Context, r routing.IpfsRouting, k key.Key, pubk ci.PubKey) error {
+func PublishPublicKey(ctx context.Context, r routing.ValueStore, k key.Key, pubk ci.PubKey) error {
 	log.Debugf("Storing pubkey at: %s", k)
 	pkbytes, err := pubk.Bytes()
 	if err != nil {
@@ -199,7 +199,7 @@ func PublishPublicKey(ctx context.Context, r routing.IpfsRouting, k key.Key, pub
 	return nil
 }
 
-func PublishEntry(ctx context.Context, r routing.IpfsRouting, ipnskey key.Key, rec *pb.IpnsEntry) error {
+func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey key.Key, rec *pb.IpnsEntry) error {
 	timectx, cancel := context.WithTimeout(ctx, PublishPutValTimeout)
 	defer cancel()
 
@@ -348,7 +348,7 @@ func InitializeKeyspace(ctx context.Context, ds dag.DAGService, pub Publisher, p
 		return err
 	}
 
-	err = pub.Publish(ctx, key, path.FromKey(nodek))
+	err = pub.Publish(ctx, key, path.FromCid(nodek))
 	if err != nil {
 		return err
 	}

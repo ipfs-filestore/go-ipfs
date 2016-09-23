@@ -5,8 +5,9 @@ package offline
 import (
 	blocks "github.com/ipfs/go-ipfs/blocks"
 	"github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	exchange "github.com/ipfs/go-ipfs/exchange"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
@@ -29,7 +30,8 @@ func (e *offlineExchange) GetBlock(_ context.Context, k key.Key) (blocks.Block, 
 
 // HasBlock always returns nil.
 func (e *offlineExchange) HasBlock(b blocks.Block) error {
-	return e.bs.Put(b)
+	err, _ := e.bs.Put(b)
+	return err
 }
 
 // Close always returns nil.

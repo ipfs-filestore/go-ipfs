@@ -1,25 +1,34 @@
 package blockstore
 
 import (
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+
 	"github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
+
+	"gx/ipfs/QmRg1gKTHzc3CZXSKzem8aR4E3TubFhbgXwfVuWnSK5CC5/go-metrics-interface"
 	lru "gx/ipfs/QmVYxfoJQiZijTgPNHCHgHELvQpbsJNTg6Crmc3dQkj3yy/golang-lru"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 )
 
 type arccache struct {
 	arc        *lru.ARCCache
 	blockstore Blockstore
+
+	hits  metrics.Counter
+	total metrics.Counter
 }
 
-func arcCached(bs Blockstore, lruSize int) (*arccache, error) {
+func newARCCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*arccache, error) {
 	arc, err := lru.NewARC(lruSize)
 	if err != nil {
 		return nil, err
 	}
+	c := &arccache{arc: arc, blockstore: bs}
+	c.hits = metrics.NewCtx(ctx, "arc.hits_total", "Number of ARC cache hits").Counter()
+	c.total = metrics.NewCtx(ctx, "arc_total", "Total number of ARC cache requests").Counter()
 
-	return &arccache{arc: arc, blockstore: bs}, nil
+	return c, nil
 }
 
 func (b *arccache) DeleteBlock(k key.Key) error {
@@ -41,6 +50,7 @@ func (b *arccache) DeleteBlock(k key.Key) error {
 // if ok == false has is inconclusive
 // if ok == true then has respons to question: is it contained
 func (b *arccache) hasCached(k key.Key) (has bool, ok bool) {
+	b.total.Inc()
 	if k == "" {
 		// Return cache invalid so the call to blockstore happens
 		// in case of invalid key and correct error is created.
@@ -49,6 +59,7 @@ func (b *arccache) hasCached(k key.Key) (has bool, ok bool) {
 
 	h, ok := b.arc.Get(k)
 	if ok {
+		b.hits.Inc()
 		return h.(bool), true
 	}
 	return false, false
@@ -80,33 +91,35 @@ func (b *arccache) Get(k key.Key) (blocks.Block, error) {
 	return bl, err
 }
 
-func (b *arccache) Put(bl blocks.Block) error {
+func (b *arccache) Put(bl blocks.Block) (error, blocks.Block) {
 	if has, ok := b.hasCached(bl.Key()); ok && has {
-		return nil
+		return nil, nil
 	}
 
-	err := b.blockstore.Put(bl)
+	err, added := b.blockstore.Put(bl)
 	if err == nil {
 		b.arc.Add(bl.Key(), true)
 	}
-	return err
+	return err, added
 }
 
-func (b *arccache) PutMany(bs []blocks.Block) error {
+func (b *arccache) PutMany(bs []blocks.Block) (error, []blocks.Block) {
 	var good []blocks.Block
 	for _, block := range bs {
+		// call put on block if result is inconclusive or we are sure that
+		// the block isn't in storage
 		if has, ok := b.hasCached(block.Key()); !ok || (ok && !has) {
 			good = append(good, block)
 		}
 	}
-	err := b.blockstore.PutMany(bs)
+	err, added := b.blockstore.PutMany(good)
 	if err != nil {
-		return err
+		return err, nil
 	}
-	for _, block := range bs {
+	for _, block := range good {
 		b.arc.Add(block.Key(), true)
 	}
-	return nil
+	return nil, added
 }
 
 func (b *arccache) AllKeysChan(ctx context.Context) (<-chan key.Key, error) {

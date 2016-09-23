@@ -10,39 +10,21 @@ import (
 	"sync"
 	"testing"
 
-	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	bstest "github.com/ipfs/go-ipfs/blockservice/test"
 	offline "github.com/ipfs/go-ipfs/exchange/offline"
 	imp "github.com/ipfs/go-ipfs/importer"
 	chunk "github.com/ipfs/go-ipfs/importer/chunk"
 	. "github.com/ipfs/go-ipfs/merkledag"
+	mdpb "github.com/ipfs/go-ipfs/merkledag/pb"
 	dstest "github.com/ipfs/go-ipfs/merkledag/test"
-	"github.com/ipfs/go-ipfs/pin"
 	uio "github.com/ipfs/go-ipfs/unixfs/io"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dssync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	cid "gx/ipfs/QmfSc2xehWmWLnwwYR91Y8QF4xdASypTFVknutoKQS3GHp/go-cid"
 )
-
-type dagservAndPinner struct {
-	ds DAGService
-	mp pin.Pinner
-}
-
-func getDagservAndPinner(t *testing.T) dagservAndPinner {
-	db := dssync.MutexWrap(ds.NewMapDatastore())
-	bs := bstore.NewBlockstore(db)
-	blockserv := bserv.New(bs, offline.Exchange(bs))
-	dserv := NewDAGService(blockserv)
-	mpin := pin.NewPinner(db, dserv)
-	return dagservAndPinner{
-		ds: dserv,
-		mp: mpin,
-	}
-}
 
 func TestNode(t *testing.T) {
 
@@ -72,17 +54,9 @@ func TestNode(t *testing.T) {
 			fmt.Println("encoded:", e)
 		}
 
-		h, err := n.Multihash()
-		if err != nil {
-			t.Error(err)
-		} else {
-			fmt.Println("hash:", h)
-		}
-
-		k, err := n.Key()
-		if err != nil {
-			t.Error(err)
-		} else if k != key.Key(h) {
+		h := n.Multihash()
+		k := n.Key()
+		if k != key.Key(h) {
 			t.Error("Key is not equivalent to multihash")
 		} else {
 			fmt.Println("key: ", k)
@@ -109,11 +83,7 @@ func SubtestNodeStat(t *testing.T, n *Node) {
 		return
 	}
 
-	k, err := n.Key()
-	if err != nil {
-		t.Error("n.Key() failed")
-		return
-	}
+	k := n.Key()
 
 	expected := NodeStat{
 		NumLinks:       len(n.Links),
@@ -189,10 +159,7 @@ func runBatchFetchTest(t *testing.T, read io.Reader) {
 
 	t.Log("Added file to first node.")
 
-	k, err := root.Key()
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := root.Cid()
 
 	wg := sync.WaitGroup{}
 	errs := make(chan error)
@@ -201,7 +168,7 @@ func runBatchFetchTest(t *testing.T, read io.Reader) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			first, err := dagservs[i].Get(ctx, k)
+			first, err := dagservs[i].Get(ctx, c)
 			if err != nil {
 				errs <- err
 			}
@@ -235,34 +202,17 @@ func runBatchFetchTest(t *testing.T, read io.Reader) {
 }
 
 func assertCanGet(t *testing.T, ds DAGService, n *Node) {
-	k, err := n.Key()
-	if err != nil {
+	if _, err := ds.Get(context.Background(), n.Cid()); err != nil {
 		t.Fatal(err)
-	}
-
-	if _, err := ds.Get(context.Background(), k); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestEmptyKey(t *testing.T) {
-	ds := dstest.Mock()
-	_, err := ds.Get(context.Background(), key.Key(""))
-	if err != ErrNotFound {
-		t.Error("dag service should error when key is nil", err)
 	}
 }
 
 func TestCantGet(t *testing.T) {
-	dsp := getDagservAndPinner(t)
+	ds := dstest.Mock()
 	a := NodeWithData([]byte("A"))
 
-	k, err := a.Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = dsp.ds.Get(context.Background(), k)
+	c := a.Cid()
+	_, err := ds.Get(context.Background(), c)
 	if !strings.Contains(err.Error(), "not found") {
 		t.Fatal("expected err not found, got: ", err)
 	}
@@ -290,9 +240,8 @@ func TestFetchGraph(t *testing.T) {
 	bs := bserv.New(bsis[1].Blockstore, offline.Exchange(bsis[1].Blockstore))
 
 	offline_ds := NewDAGService(bs)
-	ks := key.NewKeySet()
 
-	err = EnumerateChildren(context.Background(), offline_ds, root.Links, ks, false)
+	err = EnumerateChildren(context.Background(), offline_ds, root.Links, func(_ *cid.Cid) bool { return true }, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,8 +257,8 @@ func TestEnumerateChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ks := key.NewKeySet()
-	err = EnumerateChildren(context.Background(), ds, root.Links, ks, false)
+	set := cid.NewSet()
+	err = EnumerateChildren(context.Background(), ds, root.Links, set.Visit, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,11 +267,11 @@ func TestEnumerateChildren(t *testing.T) {
 	traverse = func(n *Node) {
 		// traverse dag and check
 		for _, lnk := range n.Links {
-			k := key.Key(lnk.Hash)
-			if !ks.Has(k) {
+			c := cid.NewCidV0(lnk.Hash)
+			if !set.Has(c) {
 				t.Fatal("missing key in set!")
 			}
-			child, err := ds.Get(context.Background(), k)
+			child, err := ds.Get(context.Background(), c)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -373,5 +322,48 @@ func TestFetchFailure(t *testing.T) {
 		if err == nil && i >= 10 {
 			t.Fatal("should have failed request")
 		}
+	}
+}
+
+func TestUnmarshalFailure(t *testing.T) {
+	badData := []byte("hello world")
+
+	_, err := DecodeProtobuf(badData)
+	if err == nil {
+		t.Fatal("shouldnt succeed to parse this")
+	}
+
+	// now with a bad link
+	pbn := &mdpb.PBNode{Links: []*mdpb.PBLink{{Hash: []byte("not a multihash")}}}
+	badlink, err := pbn.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = DecodeProtobuf(badlink)
+	if err == nil {
+		t.Fatal("should have failed to parse node with bad link")
+	}
+
+	n := &Node{}
+	n.Marshal()
+}
+
+func TestBasicAddGet(t *testing.T) {
+	ds := dstest.Mock()
+	nd := new(Node)
+
+	c, err := ds.Add(nd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := ds.Get(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !nd.Cid().Equals(out.Cid()) {
+		t.Fatal("output didnt match input")
 	}
 }

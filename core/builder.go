@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"os"
+	"syscall"
+	"time"
 
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	offline "github.com/ipfs/go-ipfs/exchange/offline"
 	dag "github.com/ipfs/go-ipfs/merkledag"
@@ -15,16 +17,19 @@ import (
 	repo "github.com/ipfs/go-ipfs/repo"
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 	cfg "github.com/ipfs/go-ipfs/repo/config"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dsync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
 
-	pstore "gx/ipfs/QmQdnfvZQuhdT93LNc5bos52wAmdr3G2p6G8teLJMEN32P/go-libp2p-peerstore"
-	goprocessctx "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess/context"
-	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
+	retry "gx/ipfs/QmPF5kxTYFkzhaY5LmkExood7aTTZBHWQC6cjdDQBuGrjp/retry-datastore"
+	metrics "gx/ipfs/QmRg1gKTHzc3CZXSKzem8aR4E3TubFhbgXwfVuWnSK5CC5/go-metrics-interface"
+	goprocessctx "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/context"
+	ci "gx/ipfs/QmVoi5es8D5fNHZDqoW6DgDAEPEV5hQp8GBz161vZXiwpQ/go-libp2p-crypto"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dsync "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 
 	"github.com/ipfs/go-ipfs/filestore"
 	"github.com/ipfs/go-ipfs/filestore/support"
+	pstore "gx/ipfs/QmdMfSLMDBDYhtc4oF3NYGCZr5dy4wQb6Ji26N4D4mdxa2/go-libp2p-peerstore"
 )
 
 type BuildCfg struct {
@@ -109,6 +114,7 @@ func NewNode(ctx context.Context, cfg *BuildCfg) (*IpfsNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx = metrics.CtxScope(ctx, "ipfs")
 
 	n := &IpfsNode{
 		mode:      offlineMode,
@@ -131,14 +137,30 @@ func NewNode(ctx context.Context, cfg *BuildCfg) (*IpfsNode, error) {
 	return n, nil
 }
 
+func isTooManyFDError(err error) bool {
+	perr, ok := err.(*os.PathError)
+	if ok && perr.Err == syscall.EMFILE {
+		return true
+	}
+
+	return false
+}
+
 func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	// setup local peer ID (private key is loaded in online setup)
 	if err := n.loadID(); err != nil {
 		return err
 	}
 
+	rds := &retry.Datastore{
+		Batching:    n.Repo.Datastore(),
+		Delay:       time.Millisecond * 200,
+		Retries:     6,
+		TempErrFunc: isTooManyFDError,
+	}
+
 	var err error
-	bs := bstore.NewBlockstoreWPrefix(n.Repo.Datastore(), fsrepo.CacheMount)
+	bs := bstore.NewBlockstoreWPrefix(rds, fsrepo.CacheMount)
 	opts := bstore.DefaultCacheOpts()
 	conf, err := n.Repo.Config()
 	if err != nil {
@@ -170,7 +192,7 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	}
 
 	if rcfg.Datastore.HashOnRead {
-		bs.RuntimeHashing(true)
+		bs.HashOnRead(true)
 	}
 
 	if cfg.Online {
@@ -183,19 +205,23 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	}
 
 	n.Blocks = bserv.New(n.Blockstore, n.Exchange)
-	dag := dag.NewDAGService(n.Blocks)
+	d := dag.NewDAGService(n.Blocks)
 	if fs,ok :=  n.Repo.DirectMount(fsrepo.FilestoreMount).(*filestore.Datastore); ok {
 		n.LinkService = filestore_support.NewLinkService(fs)
-		dag.LinkService = n.LinkService
+		d.LinkService = n.LinkService
+
 	}
-	n.DAG = dag
-	n.Pinning, err = pin.LoadPinner(n.Repo.Datastore(), n.DAG)
+	n.DAG = d
+	
+	internalDag := dag.NewDAGService(bserv.New(n.Blockstore, offline.Exchange(n.Blockstore)))
+	n.Pinning, err = pin.LoadPinner(n.Repo.Datastore(), n.DAG, internalDag)
+
 	if err != nil {
 		// TODO: we should move towards only running 'NewPinner' explicity on
 		// node init instead of implicitly here as a result of the pinner keys
 		// not being found in the datastore.
 		// this is kinda sketchy and could cause data loss
-		n.Pinning = pin.NewPinner(n.Repo.Datastore(), n.DAG)
+		n.Pinning = pin.NewPinner(n.Repo.Datastore(), n.DAG, internalDag)
 	}
 	n.Resolver = &path.Resolver{DAG: n.DAG}
 

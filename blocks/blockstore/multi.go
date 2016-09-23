@@ -8,8 +8,8 @@ import (
 	//"errors"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	dsq "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/query"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
@@ -105,16 +105,16 @@ func (bs *multiblockstore) Locate(key key.Key) []LocateInfo {
 	return res
 }
 
-func (bs *multiblockstore) Put(blk blocks.Block) error {
+func (bs *multiblockstore) Put(blk blocks.Block) (error, blocks.Block) {
 	// Has is cheaper than Put, so see if we already have it
 	exists, err := bs.Has(blk.Key())
 	if err == nil && exists {
-		return nil // already stored
+		return nil, nil // already stored
 	}
 	return bs.mounts[0].Blocks.Put(blk)
 }
 
-func (bs *multiblockstore) PutMany(blks []blocks.Block) error {
+func (bs *multiblockstore) PutMany(blks []blocks.Block) (error, []blocks.Block) {
 	stilladd := make([]blocks.Block, 0, len(blks))
 	// Has is cheaper than Put, so if we already have it then skip
 	for _, blk := range blks {
@@ -125,7 +125,7 @@ func (bs *multiblockstore) PutMany(blks []blocks.Block) error {
 		stilladd = append(stilladd, blk)
 	}
 	if len(stilladd) == 0 {
-		return nil
+		return nil, nil
 	}
 	return bs.mounts[0].Blocks.PutMany(stilladd)
 }

@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dsq "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/query"
-	ds_sync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
+	ds_sync "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
 func TestGetWhenKeyNotPresent(t *testing.T) {
@@ -39,7 +39,7 @@ func TestPutThenGetBlock(t *testing.T) {
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 	block := blocks.NewBlock([]byte("some data"))
 
-	err := bs.Put(block)
+	err, _ := bs.Put(block)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,12 +48,12 @@ func TestPutThenGetBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(block.Data(), blockFromBlockstore.Data()) {
+	if !bytes.Equal(block.RawData(), blockFromBlockstore.RawData()) {
 		t.Fail()
 	}
 }
 
-func TestRuntimeHashing(t *testing.T) {
+func TestHashOnRead(t *testing.T) {
 	orginalDebug := u.Debug
 	defer (func() {
 		u.Debug = orginalDebug
@@ -69,7 +69,7 @@ func TestRuntimeHashing(t *testing.T) {
 	bl2 := blocks.NewBlock([]byte("some other data"))
 	bs.Put(blBad)
 	bs.Put(bl2)
-	bs.RuntimeHashing(true)
+	bs.HashOnRead(true)
 
 	if _, err := bs.Get(bl.Key()); err != ErrHashMismatch {
 		t.Fatalf("expected '%v' got '%v'\n", ErrHashMismatch, err)
@@ -89,7 +89,7 @@ func newBlockStoreWithKeys(t *testing.T, d ds.Datastore, N int) (Blockstore, []k
 	keys := make([]key.Key, N)
 	for i := 0; i < N; i++ {
 		block := blocks.NewBlock([]byte(fmt.Sprintf("some data %d", i)))
-		err := bs.Put(block)
+		err, _ := bs.Put(block)
 		if err != nil {
 			t.Fatal(err)
 		}

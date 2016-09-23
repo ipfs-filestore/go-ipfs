@@ -5,10 +5,10 @@ import (
 	"time"
 
 	path "github.com/ipfs/go-ipfs/path"
-	routing "github.com/ipfs/go-ipfs/routing"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
+	ci "gx/ipfs/QmVoi5es8D5fNHZDqoW6DgDAEPEV5hQp8GBz161vZXiwpQ/go-libp2p-crypto"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	routing "gx/ipfs/QmcoQiBzRaaVv1DZbbXoDWiEtvDN94Ca1DcwnQKK2tP92s/go-libp2p-routing"
 )
 
 // mpns (a multi-protocol NameSystem) implements generic IPFS naming.
@@ -26,7 +26,7 @@ type mpns struct {
 }
 
 // NewNameSystem will construct the IPFS naming system based on Routing
-func NewNameSystem(r routing.IpfsRouting, ds ds.Datastore, cachesize int) NameSystem {
+func NewNameSystem(r routing.ValueStore, ds ds.Datastore, cachesize int) NameSystem {
 	return &mpns{
 		resolvers: map[string]resolver{
 			"dns":      newDNSResolver(),

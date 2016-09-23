@@ -13,19 +13,23 @@ import (
 	blocks "github.com/ipfs/go-ipfs/blocks"
 	blockstore "github.com/ipfs/go-ipfs/blocks/blockstore"
 	blocksutil "github.com/ipfs/go-ipfs/blocks/blocksutil"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	tn "github.com/ipfs/go-ipfs/exchange/bitswap/testnet"
 	mockrouting "github.com/ipfs/go-ipfs/routing/mock"
 	delay "github.com/ipfs/go-ipfs/thirdparty/delay"
-	p2ptestutil "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/test/util"
+	p2ptestutil "gx/ipfs/QmUuwQUJmtvC6ReYcu7xaYKEUM3pD46H18dFn3LBhVt2Di/go-libp2p/p2p/test/util"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
 // FIXME the tests are really sensitive to the network delay. fix them to work
 // well under varying conditions
 const kNetworkDelay = 0 * time.Millisecond
 
+func getVirtualNetwork() tn.Network {
+	return tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+}
+
 func TestClose(t *testing.T) {
-	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	vnet := getVirtualNetwork()
 	sesgen := NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
@@ -86,7 +90,7 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 		t.Fatal("Expected to succeed")
 	}
 
-	if !bytes.Equal(block.Data(), received.Data()) {
+	if !bytes.Equal(block.RawData(), received.RawData()) {
 		t.Fatal("Data doesn't match")
 	}
 }
@@ -285,7 +289,10 @@ func TestEmptyKey(t *testing.T) {
 	defer sg.Close()
 	bs := sg.Instances(1)[0].Exchange
 
-	_, err := bs.GetBlock(context.Background(), key.Key(""))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	_, err := bs.GetBlock(ctx, key.Key(""))
 	if err != blockstore.ErrNotFound {
 		t.Error("empty str key should return ErrNotFound")
 	}
@@ -334,7 +341,6 @@ func TestDoubleGet(t *testing.T) {
 	blocks := bg.Blocks(1)
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
-
 	blkch1, err := instances[1].Exchange.GetBlocks(ctx1, []key.Key{blocks[0].Key()})
 	if err != nil {
 		t.Fatal(err)
@@ -362,16 +368,85 @@ func TestDoubleGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blk, ok := <-blkch2
-	if !ok {
-		t.Fatal("expected to get the block here")
+	select {
+	case blk, ok := <-blkch2:
+		if !ok {
+			t.Fatal("expected to get the block here")
+		}
+		t.Log(blk)
+	case <-time.After(time.Second * 5):
+		t.Fatal("timed out waiting on block")
 	}
-	t.Log(blk)
 
 	for _, inst := range instances {
 		err := inst.Exchange.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestWantlistCleanup(t *testing.T) {
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	sg := NewTestSessionGenerator(net)
+	defer sg.Close()
+	bg := blocksutil.NewBlockGenerator()
+
+	instances := sg.Instances(1)[0]
+	bswap := instances.Exchange
+	blocks := bg.Blocks(20)
+
+	var keys []key.Key
+	for _, b := range blocks {
+		keys = append(keys, b.Key())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*50)
+	defer cancel()
+	_, err := bswap.GetBlock(ctx, keys[0])
+	if err != context.DeadlineExceeded {
+		t.Fatal("shouldnt have fetched any blocks")
+	}
+
+	time.Sleep(time.Millisecond * 50)
+
+	if len(bswap.GetWantlist()) > 0 {
+		t.Fatal("should not have anyting in wantlist")
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond*50)
+	defer cancel()
+	_, err = bswap.GetBlocks(ctx, keys[:10])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	<-ctx.Done()
+	time.Sleep(time.Millisecond * 50)
+
+	if len(bswap.GetWantlist()) > 0 {
+		t.Fatal("should not have anyting in wantlist")
+	}
+
+	_, err = bswap.GetBlocks(context.Background(), keys[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	_, err = bswap.GetBlocks(ctx, keys[10:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Millisecond * 50)
+	if len(bswap.GetWantlist()) != 11 {
+		t.Fatal("should have 11 keys in wantlist")
+	}
+
+	cancel()
+	time.Sleep(time.Millisecond * 50)
+	if !(len(bswap.GetWantlist()) == 1 && bswap.GetWantlist()[0] == keys[0]) {
+		t.Fatal("should only have keys[0] in wantlist")
 	}
 }

@@ -13,22 +13,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-ipfs/path"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dssync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
-	randbo "gx/ipfs/QmYvsG72GsfLgUeSojXArjnU6L4Wmwk7wuAxtNLuyXcc1T/randbo"
-	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	offline "github.com/ipfs/go-ipfs/exchange/offline"
 	importer "github.com/ipfs/go-ipfs/importer"
 	chunk "github.com/ipfs/go-ipfs/importer/chunk"
 	dag "github.com/ipfs/go-ipfs/merkledag"
+	"github.com/ipfs/go-ipfs/path"
 	ft "github.com/ipfs/go-ipfs/unixfs"
 	uio "github.com/ipfs/go-ipfs/unixfs/io"
+
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dssync "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
+	cid "gx/ipfs/QmfSc2xehWmWLnwwYR91Y8QF4xdASypTFVknutoKQS3GHp/go-cid"
 )
 
 func emptyDirNode() *dag.Node {
@@ -188,8 +187,8 @@ func setupRoot(ctx context.Context, t *testing.T) (dag.DAGService, *Root) {
 	ds := getDagserv(t)
 
 	root := emptyDirNode()
-	rt, err := NewRoot(ctx, ds, root, func(ctx context.Context, k key.Key) error {
-		fmt.Println("PUBLISHED: ", k)
+	rt, err := NewRoot(ctx, ds, root, func(ctx context.Context, c *cid.Cid) error {
+		fmt.Println("PUBLISHED: ", c)
 		return nil
 	})
 
@@ -281,10 +280,7 @@ func TestDirectoryLoadFromDag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fihash, err := nd.Multihash()
-	if err != nil {
-		t.Fatal(err)
-	}
+	fihash := nd.Multihash()
 
 	dir := emptyDirNode()
 	_, err = ds.Add(dir)
@@ -292,10 +288,7 @@ func TestDirectoryLoadFromDag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dirhash, err := dir.Multihash()
-	if err != nil {
-		t.Fatal(err)
-	}
+	dirhash := dir.Multihash()
 
 	top := emptyDirNode()
 	top.Links = []*dag.Link{
@@ -552,7 +545,8 @@ func actorMakeFile(d *Directory) error {
 		return err
 	}
 
-	r := io.LimitReader(randbo.New(), int64(77*rand.Intn(123)))
+	rread := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := io.LimitReader(rread, int64(77*rand.Intn(123)))
 	_, err = io.Copy(wfd, r)
 	if err != nil {
 		return err
@@ -646,7 +640,7 @@ func actorWriteFile(d *Directory) error {
 
 	size := rand.Intn(1024) + 1
 	buf := make([]byte, size)
-	randbo.New().Read(buf)
+	rand.Read(buf)
 
 	s, err := fi.Size()
 	if err != nil {
@@ -803,11 +797,7 @@ func TestFlushing(t *testing.T) {
 		t.Fatal("root wasnt a directory")
 	}
 
-	rnk, err := rnd.Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	rnk := rnd.Key()
 	exp := "QmWMVyhTuyxUrXX3ynz171jq76yY3PktfY9Bxiph7b9ikr"
 	if rnk.B58String() != exp {
 		t.Fatalf("dag looks wrong, expected %s, but got %s", exp, rnk.B58String())
@@ -858,7 +848,7 @@ func TestConcurrentReads(t *testing.T) {
 	d := mkdirP(t, rootdir, path)
 
 	buf := make([]byte, 2048)
-	randbo.New().Read(buf)
+	rand.Read(buf)
 
 	fi := fileNodeFromReader(t, ds, bytes.NewReader(buf))
 	err := d.AddChild("afile", fi)

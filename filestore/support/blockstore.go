@@ -6,7 +6,7 @@ import (
 	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
 	. "github.com/ipfs/go-ipfs/filestore"
 	fs_pb "github.com/ipfs/go-ipfs/unixfs/pb"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 )
 
 type blockstore struct {
@@ -18,31 +18,32 @@ func NewBlockstore(b bs.GCBlockstore, fs *Datastore) bs.GCBlockstore {
 	return &blockstore{b, fs}
 }
 
-func (bs *blockstore) Put(block b.Block) error {
+func (bs *blockstore) Put(block b.Block) (error, b.Block)  {
 	k := block.Key().DsKey()
 
 	data, err := bs.prepareBlock(k, block)
 	if err != nil {
-		return err
+		return err, nil
 	} else if data == nil {
 		return bs.GCBlockstore.Put(block)
 	}
-	return bs.filestore.Put(k, data)
+	return bs.filestore.Put(k, data), block
 }
 
-func (bs *blockstore) PutMany(blocks []b.Block) error {
+func (bs *blockstore) PutMany(blocks []b.Block) (error, []b.Block)  {
 	var nonFilestore []b.Block
 
 	t, err := bs.filestore.Batch()
 	if err != nil {
-		return err
+		return err, nil
 	}
 
+	added := make([]b.Block, 0, len(blocks))
 	for _, b := range blocks {
 		k := b.Key().DsKey()
 		data, err := bs.prepareBlock(k, b)
 		if err != nil {
-			return err
+			return err, nil
 		} else if data == nil {
 			nonFilestore = append(nonFilestore, b)
 			continue
@@ -50,24 +51,27 @@ func (bs *blockstore) PutMany(blocks []b.Block) error {
 
 		err = t.Put(k, data)
 		if err != nil {
-			return err
+			return err, nil
 		}
+		added = append(added, b)
 	}
 
 	err = t.Commit()
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	if len(nonFilestore) > 0 {
-		return bs.GCBlockstore.PutMany(nonFilestore)
+		err, alsoAdded := bs.GCBlockstore.PutMany(nonFilestore)
+		if err != nil {return err, added}
+		return nil, append(added, alsoAdded...)
 	} else {
-		return nil
+		return nil, added
 	}
 }
 
 func (bs *blockstore) prepareBlock(k ds.Key, block b.Block) (*DataObj, error) {
-	altData, fsInfo, err := Reconstruct(block.Data(), nil, 0)
+	altData, fsInfo, err := Reconstruct(block.RawData(), nil, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +91,7 @@ func (bs *blockstore) prepareBlock(k ds.Key, block b.Block) (*DataObj, error) {
 			Size: 0,
 			ModTime: 0,
 			Flags: Internal|WholeFile,
-			Data: block.Data(),
+			Data: block.RawData(),
 		}, nil
 	} else {
 		posInfo := block.PosInfo()
@@ -104,7 +108,7 @@ func (bs *blockstore) prepareBlock(k ds.Key, block b.Block) (*DataObj, error) {
 		}
 		if len(fsInfo.Data) == 0 {
 			d.Flags |= Internal
-			d.Data = block.Data()
+			d.Data = block.RawData()
 		} else {
 			d.Flags |= NoBlockData
 			d.Data = altData

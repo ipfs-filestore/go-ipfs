@@ -4,10 +4,10 @@ import (
 	"math"
 	"testing"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	"github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
 	"github.com/ipfs/go-ipfs/thirdparty/testutil"
-	"gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	"gx/ipfs/QmWXjJo15p4pzT7cayEwZi2sWgJqLnGDof6ZGMh9xBgU1p/go-libp2p-peer"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 )
 
 // FWIW: At the time of this commit, including a timestamp in task increases
@@ -21,6 +21,6 @@ func BenchmarkTaskQueuePush(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		q.Push(wantlist.Entry{Key: key.Key(i), Priority: math.MaxInt32}, peers[i%len(peers)])
+		q.Push(&wantlist.Entry{Key: key.Key(i), Priority: math.MaxInt32}, peers[i%len(peers)])
 	}
 }

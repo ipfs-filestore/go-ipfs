@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-ipfs/blocks"
-	"github.com/ipfs/go-ipfs/blocks/key"
+	"gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	syncds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	syncds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
 )
 
 var exampleBlock = blocks.NewBlock([]byte("foo"))
@@ -85,7 +85,7 @@ func TestHasRequestTriggersCache(t *testing.T) {
 	}
 
 	untrap(cd)
-	err := arc.Put(exampleBlock)
+	err, _ := arc.Put(exampleBlock)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestGetFillsCache(t *testing.T) {
 
 	untrap(cd)
 
-	if err := arc.Put(exampleBlock); err != nil {
+	if err, _ := arc.Put(exampleBlock); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,7 +140,7 @@ func TestGetAndDeleteFalseShortCircuit(t *testing.T) {
 }
 
 func TestArcCreationFailure(t *testing.T) {
-	if arc, err := arcCached(nil, -1); arc != nil || err == nil {
+	if arc, err := newARCCachedBS(context.TODO(), nil, -1); arc != nil || err == nil {
 		t.Fatal("expected error and no cache")
 	}
 }
@@ -175,4 +175,10 @@ func TestPutManyCaches(t *testing.T) {
 
 	trap("has hit datastore", cd, t)
 	arc.Has(exampleBlock.Key())
+	untrap(cd)
+	arc.DeleteBlock(exampleBlock.Key())
+
+	arc.Put(exampleBlock)
+	trap("PunMany has hit datastore", cd, t)
+	arc.PutMany([]blocks.Block{exampleBlock})
 }

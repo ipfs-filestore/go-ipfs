@@ -5,8 +5,8 @@ import (
 	bsrv "github.com/ipfs/go-ipfs/blockservice"
 	"github.com/ipfs/go-ipfs/exchange/offline"
 	dag "github.com/ipfs/go-ipfs/merkledag"
-	ds "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore"
-	dssync "gx/ipfs/QmTxLSvdhwg68WJimdS6icLPhZi28aTp6b7uihC2Yb47Xk/go-datastore/sync"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dssync "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
 )
 
 func Mock() dag.DAGService {
