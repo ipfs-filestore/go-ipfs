@@ -7,7 +7,8 @@ import (
 	"github.com/ipfs/go-ipfs/core/coreunix"
 	"gx/ipfs/QmeWjRodbcZFKe5tMN7poEx3izym6osrLSnTLf9UjJZBbs/pb"
 
-	blockservice "github.com/ipfs/go-ipfs/blockservice"
+	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
+	bserv "github.com/ipfs/go-ipfs/blockservice"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	files "github.com/ipfs/go-ipfs/commands/files"
 	core "github.com/ipfs/go-ipfs/core"
@@ -32,6 +33,7 @@ const (
 	onlyHashOptionName = "only-hash"
 	chunkerOptionName  = "chunker"
 	pinOptionName      = "pin"
+	allowDupName       = "allow-dup"
 )
 
 var AddCmd = &cmds.Command{
@@ -78,6 +80,7 @@ You can now refer to the added file in a gateway, like so:
 		cmds.BoolOption(hiddenOptionName, "H", "Include files that are hidden. Only takes effect on recursive add.").Default(false),
 		cmds.StringOption(chunkerOptionName, "s", "Chunking algorithm to use."),
 		cmds.BoolOption(pinOptionName, "Pin this object when adding.").Default(true),
+		cmds.BoolOption(allowDupName, "Add even if blocks are in non-cache blockstore.").Default(false),
 	},
 	PreRun: func(req cmds.Request) error {
 		if quiet, _, _ := req.Option(quietOptionName).Bool(); quiet {
@@ -135,6 +138,7 @@ You can now refer to the added file in a gateway, like so:
 		silent, _, _ := req.Option(silentOptionName).Bool()
 		chunker, _, _ := req.Option(chunkerOptionName).String()
 		dopin, _, _ := req.Option(pinOptionName).Bool()
+		allowDup, _, _ := req.Option(allowDupName).Bool()
 
 		if hash {
 			nilnode, err := core.NewNode(n.Context(), &core.BuildCfg{
@@ -149,18 +153,30 @@ You can now refer to the added file in a gateway, like so:
 			n = nilnode
 		}
 
-		dserv := n.DAG
+		exchange := n.Exchange
 		local, _, _ := req.Option("local").Bool()
 		if local {
-			offlineexch := offline.Exchange(n.Blockstore)
-			bserv := blockservice.New(n.Blockstore, offlineexch)
-			dserv = dag.NewDAGService(bserv)
+			exchange = offline.Exchange(n.Blockstore)
 		}
 
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dserv)
+		var fileAdder *coreunix.Adder
+		if allowDup {
+			// add directly to the first mount bypassing
+			// the Has() check of the multi-blockstore
+			blockstore := bs.NewGCBlockstore(n.Blockstore.FirstMount(), n.Blockstore)
+			blockService := bserv.New(blockstore, exchange)
+			dagService := dag.NewDAGService(blockService)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
+		} else if exchange != n.Exchange {
+			blockService := bserv.New(n.Blockstore, exchange)
+			dagService := dag.NewDAGService(blockService)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dagService)
+		} else {
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
+		}
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return

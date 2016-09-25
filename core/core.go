@@ -92,10 +92,10 @@ type IpfsNode struct {
 	PrivateKey ic.PrivKey // the local node's private Key
 
 	// Services
-	Peerstore   pstore.Peerstore     // storage for other Peer instances
-	Blockstore  bstore.GCBlockstore  // the block store (lower level)
-	Blocks      *bserv.BlockService  // the block service, get/add blocks.
-	DAG         merkledag.DAGService // the merkle dag service, get/add objects.
+	Peerstore   pstore.Peerstore       // storage for other Peer instances
+	Blockstore  bstore.MultiBlockstore // the block store (lower level)
+	Blocks      *bserv.BlockService    // the block service, get/add blocks.
+	DAG         merkledag.DAGService   // the merkle dag service, get/add objects.
 	LinkService merkledag.LinkService
 	Resolver    *path.Resolver // the path resolution system
 	Reporter    metrics.Reporter
