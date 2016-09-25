@@ -139,6 +139,7 @@ You can now refer to the added file in a gateway, like so:
 		silent, _, _ := req.Option(silentOptionName).Bool()
 		chunker, _, _ := req.Option(chunkerOptionName).String()
 		dopin, _, _ := req.Option(pinOptionName).Bool()
+		recursive, _, _ := req.Option(cmds.RecLong).Bool()
 		allowDup, _, _ := req.Option(allowDupName).Bool()
 
 		if hash {
@@ -164,19 +165,20 @@ You can now refer to the added file in a gateway, like so:
 		res.SetOutput((<-chan interface{})(outChan))
 
 		var fileAdder *coreunix.Adder
+		useRoot := wrap || recursive
 		if allowDup {
 			// add directly to the first mount bypassing
 			// the Has() check of the multi-blockstore
 			blockstore := bs.NewGCBlockstore(n.Blockstore.FirstMount(), n.Blockstore)
 			blockService := bserv.New(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
 		} else if exchange != n.Exchange {
 			blockService := bserv.New(n.Blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dagService)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dagService, useRoot)
 		} else {
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG, useRoot)
 		}
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
