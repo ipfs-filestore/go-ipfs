@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	bserv "github.com/ipfs/go-ipfs/blockservice"
-	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
-
+	offline "github.com/ipfs/go-ipfs/exchange/offline"
 	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
 	cid "gx/ipfs/QmfSc2xehWmWLnwwYR91Y8QF4xdASypTFVknutoKQS3GHp/go-cid"
 )
 
@@ -36,10 +36,8 @@ type LinkService interface {
 	// Return all links for a node, may be more effect than
 	// calling Get
 	GetLinks(context.Context, *cid.Cid) ([]*Link, error)
-	// WithBlockService() returns true if the LinkService is also
-	// connected to a blockservice that it will try if it has to
-	// retrive the block to gets the links
-	WithBlockService() bool
+
+	GetOfflineLinkService() LinkService
 }
 
 func NewDAGService(bs *bserv.BlockService) *dagService {
@@ -52,8 +50,7 @@ func NewDAGService(bs *bserv.BlockService) *dagService {
 // TODO: should cache Nodes that are in memory, and be
 //       able to free some of them when vm pressure is high
 type dagService struct {
-	Blocks      *bserv.BlockService
-	Links       LinkService
+	Blocks *bserv.BlockService
 }
 
 // Add adds a node to the dagService, storing the block in the BlockService
@@ -107,12 +104,6 @@ func (n *dagService) Get(ctx context.Context, c *cid.Cid) (*Node, error) {
 }
 
 func (n *dagService) GetLinks(ctx context.Context, c *cid.Cid) ([]*Link, error) {
-	if n.Links != nil {
-		links, err := n.Links.GetLinks(ctx, c)
-		if err == nil {
-			return links, nil
-		}
-	}
 	node, err := n.Get(ctx, c)
 	if err != nil {
 		return nil, err
@@ -120,8 +111,13 @@ func (n *dagService) GetLinks(ctx context.Context, c *cid.Cid) ([]*Link, error) 
 	return node.Links, nil
 }
 
-func (n *dagService) WithBlockService() bool {
-	return true
+func (n *dagService) GetOfflineLinkService() LinkService {
+	if n.Blocks.Exchange.IsOnline() {
+		bsrv := bserv.New(n.Blocks.Blockstore, offline.Exchange(n.Blocks.Blockstore))
+		return NewDAGService(bsrv)
+	} else {
+		return n
+	}
 }
 
 func (n *dagService) Remove(nd *Node) error {

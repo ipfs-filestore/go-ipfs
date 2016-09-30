@@ -1,11 +1,7 @@
 package gc
 
 import (
-	"errors"
-	
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	bserv "github.com/ipfs/go-ipfs/blockservice"
-	offline "github.com/ipfs/go-ipfs/exchange/offline"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	pin "github.com/ipfs/go-ipfs/pin"
 	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
@@ -27,17 +23,11 @@ var log = logging.Logger("gc")
 // The routine then iterates over every block in the blockstore and
 // deletes any block that is not found in the marked set.
 func GC(ctx context.Context, bs bstore.MultiBlockstore, ls dag.LinkService, pn pin.Pinner, bestEffortRoots []*cid.Cid) (<-chan key.Key, error) {
-	if ls != nil && ls.WithBlockService() {
-		return nil,errors.New("Require basic LinkService not backed by a BlockService")
-	}
-	
 	unlocker := bs.GCLock()
 
-	bsrv := bserv.New(bs, offline.Exchange(bs))
-	ds := dag.NewDAGService(bsrv)
-	ds.Links = ls
+	ls = ls.GetOfflineLinkService()
 
-	gcs, err := ColoredSet(ctx, pn, ds, bestEffortRoots)
+	gcs, err := ColoredSet(ctx, pn, ls, bestEffortRoots)
 	if err != nil {
 		return nil, err
 	}
@@ -79,16 +69,16 @@ func GC(ctx context.Context, bs bstore.MultiBlockstore, ls dag.LinkService, pn p
 	return output, nil
 }
 
-func Descendants(ctx context.Context, ds dag.LinkService, set key.KeySet, roots []*cid.Cid, bestEffort bool) error {
+func Descendants(ctx context.Context, ls dag.LinkService, set key.KeySet, roots []*cid.Cid, bestEffort bool) error {
 	for _, c := range roots {
 		set.Add(key.Key(c.Hash()))
-		links, err := ds.GetLinks(ctx, c)
+		links, err := ls.GetLinks(ctx, c)
 		if err != nil {
 			return err
 		}
 
-		// EnumerateChildren recursively walks the dag and adds the keys to the given set
-		err = dag.EnumerateChildren(ctx, ds, links, func(c *cid.Cid) bool {
+		// EnumerateChildren recursively walks the dag and adls the keys to the given set
+		err = dag.EnumerateChildren(ctx, ls, links, func(c *cid.Cid) bool {
 			k := key.Key(c.Hash())
 			seen := set.Has(k)
 			if seen {
@@ -105,16 +95,16 @@ func Descendants(ctx context.Context, ds dag.LinkService, set key.KeySet, roots 
 	return nil
 }
 
-func ColoredSet(ctx context.Context, pn pin.Pinner, ds dag.LinkService, bestEffortRoots []*cid.Cid) (key.KeySet, error) {
+func ColoredSet(ctx context.Context, pn pin.Pinner, ls dag.LinkService, bestEffortRoots []*cid.Cid) (key.KeySet, error) {
 	// KeySet currently implemented in memory, in the future, may be bloom filter or
 	// disk backed to conserve memory.
 	gcs := key.NewKeySet()
-	err := Descendants(ctx, ds, gcs, pn.RecursiveKeys(), false)
+	err := Descendants(ctx, ls, gcs, pn.RecursiveKeys(), false)
 	if err != nil {
 		return nil, err
 	}
 
-	err = Descendants(ctx, ds, gcs, bestEffortRoots, true)
+	err = Descendants(ctx, ls, gcs, bestEffortRoots, true)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +113,7 @@ func ColoredSet(ctx context.Context, pn pin.Pinner, ds dag.LinkService, bestEffo
 		gcs.Add(key.Key(k.Hash()))
 	}
 
-	err = Descendants(ctx, ds, gcs, pn.InternalPins(), false)
+	err = Descendants(ctx, ls, gcs, pn.InternalPins(), false)
 	if err != nil {
 		return nil, err
 	}
