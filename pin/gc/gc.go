@@ -1,6 +1,8 @@
 package gc
 
 import (
+	"errors"
+	
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	offline "github.com/ipfs/go-ipfs/exchange/offline"
@@ -25,11 +27,15 @@ var log = logging.Logger("gc")
 // The routine then iterates over every block in the blockstore and
 // deletes any block that is not found in the marked set.
 func GC(ctx context.Context, bs bstore.MultiBlockstore, ls dag.LinkService, pn pin.Pinner, bestEffortRoots []*cid.Cid) (<-chan key.Key, error) {
+	if ls != nil && ls.WithBlockService() {
+		return nil,errors.New("Require basic LinkService not backed by a BlockService")
+	}
+	
 	unlocker := bs.GCLock()
 
 	bsrv := bserv.New(bs, offline.Exchange(bs))
 	ds := dag.NewDAGService(bsrv)
-	ds.LinkService = ls
+	ds.Links = ls
 
 	gcs, err := ColoredSet(ctx, pn, ds, bestEffortRoots)
 	if err != nil {
@@ -73,7 +79,7 @@ func GC(ctx context.Context, bs bstore.MultiBlockstore, ls dag.LinkService, pn p
 	return output, nil
 }
 
-func Descendants(ctx context.Context, ds dag.DAGService, set key.KeySet, roots []*cid.Cid, bestEffort bool) error {
+func Descendants(ctx context.Context, ds dag.LinkService, set key.KeySet, roots []*cid.Cid, bestEffort bool) error {
 	for _, c := range roots {
 		set.Add(key.Key(c.Hash()))
 		links, err := ds.GetLinks(ctx, c)
@@ -99,7 +105,7 @@ func Descendants(ctx context.Context, ds dag.DAGService, set key.KeySet, roots [
 	return nil
 }
 
-func ColoredSet(ctx context.Context, pn pin.Pinner, ds dag.DAGService, bestEffortRoots []*cid.Cid) (key.KeySet, error) {
+func ColoredSet(ctx context.Context, pn pin.Pinner, ds dag.LinkService, bestEffortRoots []*cid.Cid) (key.KeySet, error) {
 	// KeySet currently implemented in memory, in the future, may be bloom filter or
 	// disk backed to conserve memory.
 	gcs := key.NewKeySet()

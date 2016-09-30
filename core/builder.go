@@ -208,7 +208,7 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	d := dag.NewDAGService(n.Blocks)
 	if fs, ok := n.Repo.DirectMount(fsrepo.FilestoreMount).(*filestore.Datastore); ok {
 		n.LinkService = filestore_support.NewLinkService(fs)
-		d.LinkService = n.LinkService
+		d.Links = n.LinkService
 
 	}
 	n.DAG = d
