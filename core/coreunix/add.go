@@ -61,7 +61,6 @@ func (e *ignoreFileError) Error() string {
 
 type AddedObject struct {
 	Name  string
-	Error string `json:",omitempty"`
 	Hash  string `json:",omitempty"`
 	Bytes int64  `json:",omitempty"`
 }
@@ -126,11 +125,13 @@ func (adder Adder) add(reader io.Reader) (*dag.Node, error) {
 	if adder.Trickle {
 		return importer.BuildTrickleDagFromReader(
 			adder.dagService,
-			chnk)
+			chnk,
+		)
 	}
 	return importer.BuildDagFromReader(
 		adder.dagService,
-		chnk)
+		chnk,
+	)
 }
 
 func (adder *Adder) RootNode() (*dag.Node, error) {
