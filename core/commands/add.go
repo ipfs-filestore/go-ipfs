@@ -142,7 +142,6 @@ You can now refer to the added file in a gateway, like so:
 		silent, _, _ := req.Option(silentOptionName).Bool()
 		chunker, _, _ := req.Option(chunkerOptionName).String()
 		dopin, _, _ := req.Option(pinOptionName).Bool()
-		recursive, _, _ := req.Option(cmds.RecLong).Bool()
 		allowDup, _, _ := req.Option(allowDupName).Bool()
 
 		nocopy, _ := req.Values()["no-copy"].(bool)
@@ -170,7 +169,6 @@ You can now refer to the added file in a gateway, like so:
 		res.SetOutput((<-chan interface{})(outChan))
 
 		var fileAdder *coreunix.Adder
-		useRoot := wrap || recursive
 		perFileLocker := filestore.NoOpLocker()
 		if nocopy {
 			fs, ok := n.Repo.DirectMount(fsrepo.FilestoreMount).(*filestore.Datastore)
@@ -181,7 +179,7 @@ You can now refer to the added file in a gateway, like so:
 			blockstore := filestore_support.NewBlockstore(n.Blockstore, fs)
 			blockService := bserv.New(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
 			fileAdder.FullName = true
 			perFileLocker = fs.AddLocker()
 		} else if allowDup {
@@ -190,13 +188,13 @@ You can now refer to the added file in a gateway, like so:
 			blockstore := bs.NewGCBlockstore(n.Blockstore.FirstMount(), n.Blockstore)
 			blockService := bserv.New(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
 		} else if exchange != n.Exchange {
 			blockService := bserv.New(n.Blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dagService, useRoot)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dagService)
 		} else {
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG, useRoot)
+			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
 		}
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
