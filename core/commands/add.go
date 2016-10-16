@@ -21,7 +21,7 @@ import (
 	dagtest "github.com/ipfs/go-ipfs/merkledag/test"
 	mfs "github.com/ipfs/go-ipfs/mfs"
 	ft "github.com/ipfs/go-ipfs/unixfs"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 // Error indicating the max depth has been exceded.
@@ -179,7 +179,7 @@ You can now refer to the added file in a gateway, like so:
 				return
 			}
 			blockstore := filestore_support.NewBlockstore(n.Blockstore, fs)
-			blockService := bserv.New(blockstore, exchange)
+			blockService := bserv.NewWriteThrough(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
 			fileAdder.FullName = true
@@ -188,7 +188,7 @@ You can now refer to the added file in a gateway, like so:
 			// add directly to the first mount bypassing
 			// the Has() check of the multi-blockstore
 			blockstore := bs.NewGCBlockstore(n.Blockstore.FirstMount(), n.Blockstore)
-			blockService := bserv.New(blockstore, exchange)
+			blockService := bserv.NewWriteThrough(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService, useRoot)
 		} else if exchange != n.Exchange {

@@ -9,12 +9,12 @@ import (
 	"time"
 
 	mdag "github.com/ipfs/go-ipfs/merkledag"
-	key "gx/ipfs/Qmce4Y4zg3sYr7xKM5UueS67vhNni6EeWgCRnb7MbLJMew/go-key"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 
+	context "context"
 	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
-	cid "gx/ipfs/QmfSc2xehWmWLnwwYR91Y8QF4xdASypTFVknutoKQS3GHp/go-cid"
 )
 
 var log = logging.Logger("pin")
@@ -178,7 +178,7 @@ func (p *pinner) Pin(ctx context.Context, node *mdag.Node, recurse bool) error {
 		}
 
 		// fetch entire graph
-		err := mdag.FetchGraph(ctx, node, p.dserv)
+		err := mdag.FetchGraph(ctx, c, p.dserv)
 		if err != nil {
 			return err
 		}
@@ -279,12 +279,7 @@ func (p *pinner) isPinnedWithType(c *cid.Cid, mode PinMode) (string, bool, error
 
 	// Default is Indirect
 	for _, rc := range p.recursePin.Keys() {
-		links, err := p.dserv.GetLinks(context.Background(), rc)
-		if err != nil {
-			return "", false, err
-		}
-
-		has, err := hasChild(p.dserv, links, k)
+		has, err := hasChild(p.dserv, rc, k)
 		if err != nil {
 			return "", false, err
 		}
@@ -521,19 +516,18 @@ func (p *pinner) PinWithMode(c *cid.Cid, mode PinMode) {
 	}
 }
 
-func hasChild(ds mdag.LinkService, links []*mdag.Link, child key.Key) (bool, error) {
+func hasChild(ds mdag.LinkService, root *cid.Cid, child key.Key) (bool, error) {
+	links, err := ds.GetLinks(context.Background(), root)
+	if err != nil {
+		return false, err
+	}
 	for _, lnk := range links {
 		c := cid.NewCidV0(lnk.Hash)
 		if key.Key(c.Hash()) == child {
 			return true, nil
 		}
 
-		children, err := ds.GetLinks(context.Background(), c)
-		if err != nil {
-			return false, err
-		}
-
-		has, err := hasChild(ds, children, child)
+		has, err := hasChild(ds, c, child)
 		if err != nil {
 			return false, err
 		}
