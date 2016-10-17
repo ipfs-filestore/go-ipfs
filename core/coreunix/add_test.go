@@ -185,10 +185,12 @@ func TestAddWPosInfo(t *testing.T) {
 	bs := &testBlockstore{GCBlockstore: node.Blockstore, expectedPath: "/tmp/foo.txt", t: t}
 	bserv := blockservice.New(bs, node.Exchange)
 	dserv := dag.NewDAGService(bserv)
-	adder, err := NewAdder(context.Background(), node.Pinning, bs, dserv, false)
+	adder, err := NewAdder(context.Background(), node.Pinning, bs, dserv, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+	adder.Out = make(chan interface{})
+	adder.Progress = true
 
 	data := make([]byte, 5*1024*1024)
 	rand.New(rand.NewSource(2)).Read(data) // Rand.Read never returns an error
@@ -196,17 +198,21 @@ func TestAddWPosInfo(t *testing.T) {
 	fileInfo := dummyFileInfo{"foo.txt", int64(len(data)), time.Now()}
 	file := files.NewReaderFile("foo.txt", "/tmp/foo.txt", fileData, &fileInfo)
 
-	err = adder.AddFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	go func() {
+		defer close(adder.Out)
+		err = adder.AddFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	for _ = range adder.Out {}
 
 	if bs.countAtOffsetZero != 2 {
-		t.Fatal("expected 2 blocks with an offset at zero (one root, and one leaf)")
+		t.Fatal("expected 2 blocks with an offset at zero (one root, and one leaf), got %d", bs.countAtOffsetZero)
 	}
 	if bs.countAtOffsetNonZero != 19 {
 		// note: the exact number will depend on the size and the sharding algo. used
-		t.Fatal("expected 19 blocks with an offset > 0 got %d", bs.countAtOffsetNonZero)
+		t.Fatal("expected 19 blocks with an offset > 0, got %d", bs.countAtOffsetNonZero)
 	}
 }
 
