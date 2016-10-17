@@ -104,6 +104,7 @@ type Adder struct {
 	Silent     bool
 	Wrap       bool
 	Chunker    string
+	FullName   bool
 	root       *dag.Node
 	mr         *mfs.Root
 	unlocker   bs.Unlocker
@@ -343,7 +344,9 @@ func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, *dag.No
 	return gopath.Join(c.String(), filename), dagnode, nil
 }
 
-func (adder *Adder) pinOrAddNode(node *dag.Node, path string) error {
+func (adder *Adder) pinOrAddNode(node *dag.Node, file files.File) error {
+	path := file.FileName()
+	
 	if adder.Pin && adder.mr == nil {
 
 		adder.pinning.PinWithMode(node.Cid(), pin.Recursive)
@@ -368,7 +371,11 @@ func (adder *Adder) pinOrAddNode(node *dag.Node, path string) error {
 
 	}
 	if !adder.Silent {
-		return outputDagnode(adder.Out, path, node)
+		if adder.FullName {
+			return outputDagnode(adder.Out, file.FullPath(), node)
+		} else {
+			return outputDagnode(adder.Out, file.FileName(), node)
+		}
 	}
 	return nil
 }
@@ -410,7 +417,7 @@ func (adder *Adder) addFile(file files.File) error {
 			return err
 		}
 
-		return adder.pinOrAddNode(dagnode, s.FileName())
+		return adder.pinOrAddNode(dagnode, s)
 	}
 
 	// case for regular file
@@ -432,7 +439,7 @@ func (adder *Adder) addFile(file files.File) error {
 	}
 
 	// patch it into the root
-	return adder.pinOrAddNode(dagnode, file.FileName())
+	return adder.pinOrAddNode(dagnode, file)
 }
 
 func (adder *Adder) addDir(dir files.File) error {
