@@ -185,7 +185,7 @@ func TestAddWPosInfo(t *testing.T) {
 	bs := &testBlockstore{GCBlockstore: node.Blockstore, expectedPath: "/tmp/foo.txt", t: t}
 	bserv := blockservice.New(bs, node.Exchange)
 	dserv := dag.NewDAGService(bserv)
-	adder, err := NewAdder(context.Background(), node.Pinning, bs, dserv, true)
+	adder, err := NewAdder(context.Background(), node.Pinning, bs, dserv, false)
 	if err != nil {
 		t.Fatal(err)
 	}
