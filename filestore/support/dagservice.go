@@ -4,11 +4,11 @@ import (
 	"context"
 
 	. "github.com/ipfs/go-ipfs/filestore"
-	
-	node "gx/ipfs/QmZx42H5khbVQhV5odp66TApShV4XCujYazcvYduZ4TroB/go-ipld-node"
+
 	dag "github.com/ipfs/go-ipfs/merkledag"
-	b "github.com/ipfs/go-ipfs/blocks/blockstore"
-	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"	
+	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
+	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
+	node "gx/ipfs/QmZx42H5khbVQhV5odp66TApShV4XCujYazcvYduZ4TroB/go-ipld-node"
 )
 
 func NewDAGService(fs *Datastore, ds dag.DAGService) dag.DAGService {
@@ -29,7 +29,7 @@ func GetLinks(dataObj *DataObj) ([]*node.Link, error) {
 }
 
 func (ds *dagService) GetLinks(ctx context.Context, c *cid.Cid) ([]*node.Link, error) {
-	dsKey := b.CidToDsKey(c)
+	dsKey := dshelp.CidToDsKey(c)
 	_, dataObj, err := ds.fs.GetDirect(dsKey)
 	if err != nil {
 		return ds.DAGService.GetLinks(ctx, c)

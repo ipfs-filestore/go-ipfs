@@ -13,9 +13,10 @@ import (
 	. "github.com/ipfs/go-ipfs/filestore/support"
 	//b58 "gx/ipfs/QmT8rehPR3F6bmwL6zjUN8XpiDBFFpMP2myPdC6ApsWfJf/go-base58"
 	//mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
+	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
+	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
 	node "gx/ipfs/QmZx42H5khbVQhV5odp66TApShV4XCujYazcvYduZ4TroB/go-ipld-node"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
-	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
 )
 
 type VerifyParams struct {
@@ -125,7 +126,7 @@ func VerifyKeys(ks []*cid.Cid, node *core.IpfsNode, fs *Basic, params *VerifyPar
 }
 
 func verifyKey(k *cid.Cid, fs *Basic, bs b.Blockstore, verifyLevel VerifyLevel) ListRes {
-	dsKey := b.CidToDsKey(k)
+	dsKey := dshelp.CidToDsKey(k)
 	origData, dataObj, err := fs.GetDirect(dsKey)
 	if err == nil && dataObj.NoBlockData() {
 		res := ListRes{dsKey, dataObj, 0}
@@ -268,7 +269,7 @@ func (p *verifyParams) verifyKeys(ks []*cid.Cid) {
 		//if key == "" {
 		//	continue
 		//}
-		dsKey := b.CidToDsKey(k)
+		dsKey := dshelp.CidToDsKey(k)
 		origData, dataObj, children, r := p.get(dsKey)
 		if dataObj == nil || AnError(r) {
 			/* nothing to do */
@@ -420,7 +421,7 @@ func (p *verifyParams) markReachable(keys []ds.Key) error {
 			links, err := GetLinks(val)
 			children := make([]ds.Key, 0, len(links))
 			for _, link := range links {
-				children = append(children, b.CidToDsKey(link.Cid))
+				children = append(children, dshelp.CidToDsKey(link.Cid))
 			}
 			p.markReachable(children)
 		}
@@ -447,7 +448,7 @@ func (p *verifyParams) markFutureOrphans() {
 func (p *verifyParams) verifyNode(links []*node.Link) int {
 	finalStatus := StatusComplete
 	for _, link := range links {
-		key := b.CidToDsKey(link.Cid)
+		key := dshelp.CidToDsKey(link.Cid)
 		res := ListRes{Key: key}
 		res.Status = p.getStatus(key)
 		if res.Status == 0 {
