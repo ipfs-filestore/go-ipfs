@@ -2,6 +2,7 @@ package coreunix
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -18,9 +19,9 @@ import (
 	"github.com/ipfs/go-ipfs/pin/gc"
 	"github.com/ipfs/go-ipfs/repo"
 	"github.com/ipfs/go-ipfs/repo/config"
+	pi "github.com/ipfs/go-ipfs/thirdparty/posinfo"
 	"github.com/ipfs/go-ipfs/thirdparty/testutil"
 
-	"context"
 	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
 )
 
@@ -205,7 +206,8 @@ func TestAddWPosInfo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	for _ = range adder.Out {}
+	for _ = range adder.Out {
+	}
 
 	if bs.countAtOffsetZero != 2 {
 		t.Fatal("expected 2 blocks with an offset at zero (one root, and one leaf), got %d", bs.countAtOffsetZero)
@@ -237,8 +239,9 @@ func (bs *testBlockstore) PutMany(blocks []blocks.Block) error {
 }
 
 func (bs *testBlockstore) CheckForPosInfo(block blocks.Block) error {
-	posInfo := block.PosInfo()
-	if posInfo != nil {
+	fsn, ok := block.(*pi.FilestoreNode)
+	if ok {
+		posInfo := fsn.PosInfo
 		if posInfo.FullPath != bs.expectedPath {
 			bs.t.Fatal("PosInfo does not have the expected path")
 		}
