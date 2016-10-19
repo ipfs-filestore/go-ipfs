@@ -136,10 +136,6 @@ func (n *UnixfsNode) RemoveChild(index int, dbh *DagBuilderHelper) {
 	n.node.SetLinks(append(n.node.Links()[:index], n.node.Links()[index+1:]...))
 }
 
-func (n *UnixfsNode) FileSize() uint64 {
-	return n.ufmt.FileSize()
-}
-
 func (n *UnixfsNode) SetData(data []byte) {
 	n.ufmt.Data = data
 }
