@@ -169,7 +169,7 @@ func TestAddGCLive(t *testing.T) {
 	}
 }
 
-func TestAddWPosInfo(t *testing.T) {
+func testAddWPosInfo(t *testing.T, rawLeaves bool) {
 	r := &repo.Mock{
 		C: config.Config{
 			Identity: config.Identity{
@@ -192,6 +192,7 @@ func TestAddWPosInfo(t *testing.T) {
 	}
 	adder.Out = make(chan interface{})
 	adder.Progress = true
+	adder.RawLeaves = rawLeaves
 
 	data := make([]byte, 5*1024*1024)
 	rand.New(rand.NewSource(2)).Read(data) // Rand.Read never returns an error
@@ -210,13 +211,22 @@ func TestAddWPosInfo(t *testing.T) {
 	}
 
 	if bs.countAtOffsetZero != 2 {
-		t.Fatal("expected 2 blocks with an offset at zero (one root, and one leaf), got %d", bs.countAtOffsetZero)
+		t.Fatal("expected 2 blocks with an offset at zero (one root and one leafh), got", bs.countAtOffsetZero)
 	}
 	if bs.countAtOffsetNonZero != 19 {
 		// note: the exact number will depend on the size and the sharding algo. used
-		t.Fatal("expected 19 blocks with an offset > 0, got %d", bs.countAtOffsetNonZero)
+		t.Fatal("expected 19 blocks with an offset > 0, got", bs.countAtOffsetNonZero)
 	}
 }
+
+func TestAddWPosInfo(t *testing.T) {
+	testAddWPosInfo(t, false)
+}
+
+func TestAddWPosInfoAndRawLeafs(t *testing.T) {
+	testAddWPosInfo(t, true)
+}
+
 
 type testBlockstore struct {
 	blockstore.GCBlockstore

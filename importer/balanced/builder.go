@@ -28,7 +28,7 @@ func BalancedLayout(db *h.DagBuilderHelper) (node.Node, error) {
 			return nil, err
 		}
 
-		offset = nroot.FileSize()
+		offset = nroot.DataSize()
 		root = nroot
 
 	}
@@ -83,7 +83,7 @@ func fillNodeRec(db *h.DagBuilderHelper, node *h.UnixfsNode, depth int, offset u
 		if err := node.AddChild(child, db); err != nil {
 			return err
 		}
-		offset += child.FileSize()
+		offset += child.DataSize()
 	}
 
 	return nil
