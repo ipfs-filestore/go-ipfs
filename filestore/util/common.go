@@ -13,7 +13,6 @@ import (
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
 	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
-	k "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 	node "gx/ipfs/QmZx42H5khbVQhV5odp66TApShV4XCujYazcvYduZ4TroB/go-ipld-node"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 	//"gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
@@ -163,14 +162,6 @@ func (r *ListRes) StatusStr() string {
 		str = "unchecked"
 	}
 	return str
-}
-
-func MHash(dsKey ds.Key) string {
-	key, err := k.KeyFromDsKey(dsKey)
-	if err != nil {
-		return "??????????????????????????????????????????????"
-	}
-	return key.B58String()
 }
 
 func (r *ListRes) MHash() string {
