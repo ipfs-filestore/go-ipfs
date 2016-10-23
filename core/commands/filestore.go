@@ -515,7 +515,7 @@ func formatHash(res fsutil.ListRes) (string, error) {
 }
 
 func formatPorcelain(res fsutil.ListRes) (string, error) {
-	if len(res.RawHash()) == 0 {
+	if res.Key.Hash == "" {
 		return "", nil
 	}
 	if res.DataObj == nil {
