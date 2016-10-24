@@ -168,19 +168,21 @@ func (r *ListRes) MHash() string {
 	return MHash(r.Key)
 }
 
-//func (r *ListRes) RawHash() []byte {
-//	return r.Key.Bytes()[1:]
-//}
+// future ls formats
+// hash only (with dups)
+// keys with filename and offset
+// also with type
+// also with size and modification time
+
 
 func (r *ListRes) Format() string {
 	if r.Key.Hash == "" {
 		return "\n"
 	}
-	mhash := r.MHash()
 	if r.DataObj == nil {
-		return fmt.Sprintf("%s%s\n", statusStr(r.Status), mhash)
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), r.Key.Format())
 	} else {
-		return fmt.Sprintf("%s%s %s\n", statusStr(r.Status), mhash, r.DataObj.Format())
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), r.DataObj.KeyStr(r.Key))
 	}
 }
 
