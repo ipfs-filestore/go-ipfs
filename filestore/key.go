@@ -1,14 +1,14 @@
 package filestore
 
 import (
-	"strings"
-	"strconv"
 	"bytes"
 	"fmt"
-	
-	base32 "gx/ipfs/Qmb1DA2A9LS2wR4FFweB4uEDomFsdmnw1VLawLE1yQzudj/base32"
-	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
+	"strconv"
+	"strings"
+
 	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
+	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
+	base32 "gx/ipfs/Qmb1DA2A9LS2wR4FFweB4uEDomFsdmnw1VLawLE1yQzudj/base32"
 )
 
 type Key struct {
@@ -17,29 +17,63 @@ type Key struct {
 	Offset   int64  // -1 if not given
 }
 
-func ParseDsKey(key string) Key {
-	idx := strings.Index(key[1:], "/")+1
-	if (idx == 0) {
-		return Key{key,"",-1}
+func ParseKey(str string) (*DbKey, error) {
+	idx := strings.Index(str, "/")
+	var key *DbKey
+	if idx == -1 {
+		idx = len(str)
 	}
-	hash := key[:idx]
-	key = key[idx+1:]
-	filename := strings.Trim(key, "0123456789")
-	if len(filename) <= 2 || filename[len(filename)-2:] != "//" || len(key) == len(filename){
-		return Key{hash,filename,-1}
+	if idx != 0 { // we have a Hash
+		mhash := str[:idx]
+		c, err := cid.Decode(mhash)
+		if err != nil {
+			return nil, err
+		}
+		key = CidToKey(c)
+	} else {
+		key = &DbKey{}
 	}
-	offsetStr := key[len(filename):]
-	filename = filename[:len(filename)-2]
-	offset,_ := strconv.ParseInt(offsetStr, 10, 64)
-	return Key{hash,filename,offset}
+	if idx == len(str) { // we just have a hash
+		return key, nil
+	}
+	str = str[idx+1:]
+	parseRest(&key.Key, str)
+	return key, nil
+}
+
+func ParseDsKey(str string) Key {
+	idx := strings.Index(str[1:], "/") + 1
+	if idx == 0 {
+		return Key{str, "", -1}
+	}
+	key := Key{Hash: str[:idx]}
+	str = str[idx+1:]
+	parseRest(&key, str)
+	return key
+}
+
+func parseRest(key *Key, str string) {
+	filename := strings.Trim(str, "0123456789")
+	if len(filename) <= 2 || filename[len(filename)-2:] != "//" || len(str) == len(filename) {
+		key.FilePath = filename
+		key.Offset = -1
+		return
+	}
+	offsetStr := str[len(filename):]
+	key.FilePath = filename[:len(filename)-2]
+	key.Offset, _ = strconv.ParseInt(offsetStr, 10, 64)
 }
 
 func (k Key) String() string {
 	str := k.Hash
-	if k.FilePath == "" {return str}
+	if k.FilePath == "" {
+		return str
+	}
 	str += "/"
 	str += k.FilePath
-	if k.Offset == -1 {return str}
+	if k.Offset == -1 {
+		return str
+	}
 	str += "//"
 	str += strconv.FormatInt(k.Offset, 10)
 	return str
@@ -69,12 +103,12 @@ func (k Key) Cid() (*cid.Cid, error) {
 type DbKey struct {
 	Key
 	Bytes []byte
-	cid *cid.Cid
+	cid   *cid.Cid
 }
 
 func ParseDbKey(key string) *DbKey {
 	return &DbKey{
-		Key: ParseDsKey(key),
+		Key:   ParseDsKey(key),
 		Bytes: []byte(key),
 	}
 }
@@ -95,7 +129,7 @@ func CidToKey(c *cid.Cid) *DbKey {
 
 func (k *DbKey) Cid() (*cid.Cid, error) {
 	if k.cid == nil {
-		var err error 
+		var err error
 		k.cid, err = k.Key.Cid()
 		if err != nil {
 			return nil, err
@@ -124,8 +158,12 @@ func (k Key) Format() string {
 }
 
 func (k *DbKey) Format() string {
-	if k.FilePath == "" {
-		return MHash(k)
+	mhash := ""
+	if k.Hash != "" {
+		mhash = MHash(k)
 	}
-	return Key{MHash(k), k.FilePath, k.Offset}.String()
+	if k.FilePath == "" {
+		return mhash
+	}
+	return Key{mhash, k.FilePath, k.Offset}.String()
 }
