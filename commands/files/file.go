@@ -60,9 +60,3 @@ type FileInfo interface {
 	FullPath() string
 	Stat() os.FileInfo
 }
-
-type PosInfo struct {
-	Offset   uint64
-	FullPath string
-	Stat     os.FileInfo // can be nil
-}

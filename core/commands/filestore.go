@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/go-ipfs/filestore"
 	fsutil "github.com/ipfs/go-ipfs/filestore/util"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"gx/ipfs/QmRpAnJ1Mvd2wCtwoFevW8pbLTivUqmFxynptG6uvp1jzC/safepath"
 	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
 )
 
@@ -64,10 +65,10 @@ same as for 'ipfs add'.
 		cwd := ""
 		var err error
 		if logical {
-			cwd, err = filestore.EnvWd()
+			cwd, err = safepath.EnvWd()
 		}
 		if physical {
-			cwd, err = filestore.SystemWd()
+			cwd, err = safepath.SystemWd()
 		}
 		if err != nil {
 			return err
@@ -75,7 +76,7 @@ same as for 'ipfs add'.
 		if cwd != "" {
 			paths := req.Arguments()
 			for i, path := range paths {
-				abspath, err := filestore.AbsPath(cwd, path)
+				abspath, err := safepath.AbsPath(cwd, path)
 				if err != nil {
 					return err
 				}
@@ -356,7 +357,7 @@ func procListArgs(objs []string) ([]*cid.Cid, fsutil.ListFilter, error) {
 	paths := make([]string, 0)
 	for _, obj := range objs {
 		if filepath.IsAbs(obj) {
-			paths = append(paths, filestore.CleanPath(obj))
+			paths = append(paths, safepath.Clean(obj))
 		} else {
 			key, err := cid.Decode(obj)
 			if err != nil {
@@ -589,7 +590,8 @@ object info.
 The --level option specifies how thorough the checks should be.  The
 current meaning of the levels are:
   7-9: always check the contents
-  4-6: check the contents if the modification time differs
+    6: check the contents based on the setting of Filestore.Verify
+  4-5: check the contents if the modification time differs
   2-3: report changed if the modification time differs
   0-1: only check for the existence of blocks without verifying the
        contents of leaf nodes

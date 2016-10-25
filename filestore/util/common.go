@@ -10,9 +10,10 @@ import (
 	. "github.com/ipfs/go-ipfs/filestore/support"
 
 	b "github.com/ipfs/go-ipfs/blocks/blockstore"
-	k "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+	dag "github.com/ipfs/go-ipfs/merkledag"
+	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
 	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
-	node "github.com/ipfs/go-ipfs/merkledag"
+	node "gx/ipfs/QmZx42H5khbVQhV5odp66TApShV4XCujYazcvYduZ4TroB/go-ipld-node"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 	//"gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
 )
@@ -26,14 +27,20 @@ const (
 	CheckAlways
 )
 
-func VerifyLevelFromNum(level int) (VerifyLevel, error) {
+func VerifyLevelFromNum(fs *Basic, level int) (VerifyLevel, error) {
 	switch level {
 	case 0, 1:
 		return CheckExists, nil
 	case 2, 3:
 		return CheckFast, nil
-	case 4, 5, 6:
+	case 4, 5:
 		return CheckIfChanged, nil
+	case 6:
+		if fs.Verify() <= VerifyIfChanged {
+			return CheckIfChanged, nil
+		} else {
+			return CheckAlways, nil
+		}
 	case 7, 8, 9:
 		return CheckAlways, nil
 	default:
@@ -157,14 +164,6 @@ func (r *ListRes) StatusStr() string {
 	return str
 }
 
-func MHash(dsKey ds.Key) string {
-	key, err := k.KeyFromDsKey(dsKey)
-	if err != nil {
-		return "??????????????????????????????????????????????"
-	}
-	return key.B58String()
-}
-
 func (r *ListRes) MHash() string {
 	return MHash(r.Key)
 }
@@ -228,7 +227,7 @@ func ListByKey(fs *Basic, ks []*cid.Cid) (<-chan ListRes, error) {
 	go func() {
 		defer close(out)
 		for _, k := range ks {
-			dsKey := b.CidToDsKey(k)
+			dsKey := dshelp.CidToDsKey(k)
 			_, dataObj, err := fs.GetDirect(dsKey)
 			if err == nil {
 				out <- ListRes{dsKey, dataObj, 0}
@@ -302,7 +301,7 @@ func getNode(dsKey ds.Key, fs *Basic, bs b.Blockstore) ([]byte, *DataObj, []*nod
 			return origData, dataObj, links, StatusOk
 		}
 	}
-	k, err2 := b.DsKeyToCid(dsKey)
+	k, err2 := dshelp.DsKeyToCid(dsKey)
 	if err2 != nil {
 		return nil, nil, nil, StatusError
 	}
@@ -313,10 +312,10 @@ func getNode(dsKey ds.Key, fs *Basic, bs b.Blockstore) ([]byte, *DataObj, []*nod
 		Logger.Errorf("%s: %v", k, err2)
 		return nil, nil, nil, StatusError
 	}
-	node, err := node.DecodeProtobuf(block.RawData())
+	node, err := dag.DecodeProtobuf(block.RawData())
 	if err != nil {
 		Logger.Errorf("%s: %v", k, err)
 		return nil, nil, nil, StatusCorrupt
 	}
-	return nil, nil, node.Links, StatusFound
+	return nil, nil, node.Links(), StatusFound
 }
