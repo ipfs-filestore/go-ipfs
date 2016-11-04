@@ -5,10 +5,9 @@ import (
 	b "github.com/ipfs/go-ipfs/blocks"
 	BS "github.com/ipfs/go-ipfs/blocks/blockstore"
 	. "github.com/ipfs/go-ipfs/filestore"
-	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
 	pi "github.com/ipfs/go-ipfs/thirdparty/posinfo"
 	fs_pb "github.com/ipfs/go-ipfs/unixfs/pb"
-	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
+	cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 
 	"gx/ipfs/QmRpAnJ1Mvd2wCtwoFevW8pbLTivUqmFxynptG6uvp1jzC/safepath"
@@ -24,7 +23,7 @@ func NewBlockstore(b BS.GCBlockstore, fs *Datastore) BS.GCBlockstore {
 }
 
 func (bs *blockstore) Put(block b.Block) error {
-	k := dshelp.CidToDsKey(block.Cid())
+	k := BS.CidToDsKey(block.Cid())
 
 	data, err := bs.prepareBlock(k, block)
 	if err != nil {
@@ -44,7 +43,7 @@ func (bs *blockstore) PutMany(blocks []b.Block) error {
 	}
 
 	for _, b := range blocks {
-		k := dshelp.CidToDsKey(b.Cid())
+		k := BS.CidToDsKey(b.Cid())
 		data, err := bs.prepareBlock(k, b)
 		if err != nil {
 			return err

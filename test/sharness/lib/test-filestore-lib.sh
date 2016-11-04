@@ -337,9 +337,9 @@ filestore_test_w_daemon() {
 
     test_add_cat_file "filestore add " "`pwd`" "QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH"
 
-    test_post_add "filestore add " "`pwd`" 
+    test_post_add "filestore add " "`pwd`"
 
-    test_add_empty_file "filestore add " "`pwd`" 
+    test_add_empty_file "filestore add " "`pwd`"
 
     test_add_cat_5MB "filestore add " "`pwd`" "QmSr7FqYkxYWGoSfy8ZiaMWQ5vosb18DQGCzjwEQnVHkTb"
 

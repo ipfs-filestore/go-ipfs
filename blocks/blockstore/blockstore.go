@@ -12,7 +12,7 @@ import (
 	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
 
 	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
-	cid "gx/ipfs/QmXUuRadqDq5BuFWzVU6VuKaSjTcNm1gNCtLvvP1TJCW4z/go-cid"
+	cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
 	dsns "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/namespace"
 	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
@@ -117,12 +117,16 @@ func (bs *blockstore) Get(k *cid.Cid) (blocks.Block, error) {
 	}
 
 	if bs.rehash {
-		rb := blocks.NewBlock(bdata)
-		if !rb.Cid().Equals(k) {
-			return nil, ErrHashMismatch
-		} else {
-			return rb, nil
+		rbcid, err := k.Prefix().Sum(bdata)
+		if err != nil {
+			return nil, err
 		}
+
+		if !rbcid.Equals(k) {
+			return nil, ErrHashMismatch
+		}
+
+		return blocks.NewBlockWithCid(bdata, rbcid)
 	} else {
 		return blocks.NewBlockWithCid(bdata, k)
 	}
@@ -226,6 +230,10 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) 
 	}()
 
 	return output, nil
+}
+
+func NewGCLocker() *gclocker {
+	return &gclocker{}
 }
 
 type gclocker struct {
