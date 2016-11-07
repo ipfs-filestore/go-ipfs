@@ -9,20 +9,23 @@ import (
 	"strings"
 	"time"
 
-	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
+	//bs "github.com/ipfs/go-ipfs/blocks/blockstore"
 	butil "github.com/ipfs/go-ipfs/blocks/blockstore/util"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	"github.com/ipfs/go-ipfs/core"
 	. "github.com/ipfs/go-ipfs/filestore"
-	"github.com/ipfs/go-ipfs/pin"
-	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
-	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
-	cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
+	//"github.com/ipfs/go-ipfs/pin"
+	//fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
+	//dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
+	//cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 )
 
-func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, what ...string) (io.Reader, error) {
-	exclusiveMode := node.LocalMode()
-	stages := 0
+func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, level int, what ...string) (io.Reader, error) {
+	//exclusiveMode := node.LocalMode()
+	stages := 0 // represented as a 3 digit octodecimal
+	// stage 0100: remove bad blocks
+	//       0020: remove incomplete nodes
+	//       0003: remove orphan nodes
 	to_remove := make([]bool, 100)
 	incompleteWhen := make([]string, 0)
 	for i := 0; i < len(what); i++ {
@@ -80,17 +83,17 @@ func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, wha
 		var ch <-chan ListRes
 		switch stages {
 		case 0100:
-			fmt.Fprintf(rmWtr, "performing verify --basic --level=6\n")
+			fmt.Fprintf(rmWtr, "performing verify --basic --level=%d\n", level)
 			ch, err = VerifyBasic(snapshot.Basic, &VerifyParams{
-				Level:     6,
+				Level:     level,
 				Verbose:   1,
 				NoObjInfo: true,
 			})
 		case 0120, 0103, 0003:
-			fmt.Fprintf(rmWtr, "performing verify --level=6 --incomplete-when=%s\n",
-				incompleteWhenStr)
+			fmt.Fprintf(rmWtr, "performing verify --level=%d --incomplete-when=%s\n",
+				level, incompleteWhenStr)
 			ch, err = VerifyFull(node, snapshot, &VerifyParams{
-				Level:          6,
+				Level:          level,
 				Verbose:        6,
 				IncompleteWhen: incompleteWhen,
 				NoObjInfo:      true,
@@ -99,14 +102,20 @@ func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, wha
 			fmt.Fprintf(rmWtr, "performing verify --skip-orphans --level=1\n")
 			ch, err = VerifyFull(node, snapshot, &VerifyParams{
 				SkipOrphans: true,
-				Level:       1,
+				Level:       level,
 				Verbose:     6,
 				NoObjInfo:   true,
 			})
 		case 0123, 0023:
-			fmt.Fprintf(rmWtr, "performing verify-post-orphan --level=6 --incomplete-when=%s\n",
-				incompleteWhenStr)
-			ch, err = VerifyPostOrphan(node, snapshot, 6, incompleteWhen)
+			fmt.Fprintf(rmWtr, "performing verify --post-orphans --level=%d --incomplete-when=%s\n",
+				level, incompleteWhenStr)
+			ch, err = VerifyFull(node, snapshot, &VerifyParams{
+				Level:          level,
+				Verbose:        6,
+				IncompleteWhen: incompleteWhen,
+				PostOrphan:     true,
+				NoObjInfo:      true,
+			})
 		default:
 			// programmer error
 			panic(fmt.Errorf("invalid stage string %d", stages))
@@ -116,24 +125,29 @@ func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, wha
 			return
 		}
 
-		var toDel []*cid.Cid
-		for r := range ch {
-			if to_remove[r.Status] {
-				c, err := dshelp.DsKeyToCid(r.Key)
-				if err != nil {
-					wtr.CloseWithError(err)
-					return
+		remover := NewFilestoreRemover(snapshot)
+
+		ch2 := make(chan interface{}, 16)
+		go func() {
+			defer close(ch2)
+			for r := range ch {
+				if to_remove[r.Status] {
+					r2 := remover.Delete(KeyToKey(r.Key), nil)
+					if r2 != nil {
+						ch2 <- r2
+					}
 				}
-				toDel = append(toDel, c)
 			}
-		}
-		var ch2 <-chan interface{}
-		if exclusiveMode {
-			ch2 = rmBlocks(node.Blockstore, node.Pinning, toDel, Snapshot{}, fs)
-		} else {
-			ch2 = rmBlocks(node.Blockstore, node.Pinning, toDel, snapshot, fs)
-		}
+		}()
 		err2 := butil.ProcRmOutput(ch2, rmWtr, wtr)
+		if err2 != nil {
+			wtr.CloseWithError(err2)
+			return
+		}
+		debugCleanRmDelay()
+		Logger.Debugf("Removing invalid blocks after clean.  Online Mode.")
+		ch3 := remover.Finish(node.Blockstore, node.Pinning)
+		err2 = butil.ProcRmOutput(ch3, rmWtr, wtr)
 		if err2 != nil {
 			wtr.CloseWithError(err2)
 			return
@@ -144,55 +158,55 @@ func Clean(req cmds.Request, node *core.IpfsNode, fs *Datastore, quiet bool, wha
 	return rdr, nil
 }
 
-func rmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, keys []*cid.Cid, snap Snapshot, fs *Datastore) <-chan interface{} {
+// func rmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, keys []*cid.Cid, snap Snapshot, fs *Datastore) <-chan interface{} {
 
-	// make the channel large enough to hold any result to avoid
-	// blocking while holding the GCLock
-	out := make(chan interface{}, len(keys))
+// 	// make the channel large enough to hold any result to avoid
+// 	// blocking while holding the GCLock
+// 	out := make(chan interface{}, len(keys))
 
-	debugCleanRmDelay()
+// 	debugCleanRmDelay()
 
-	if snap.Defined() {
-		Logger.Debugf("Removing invalid blocks after clean.  Online Mode.")
-	} else {
-		Logger.Debugf("Removing invalid blocks after clean.  Exclusive Mode.")
-	}
+// 	if snap.Defined() {
+// 		Logger.Debugf("Removing invalid blocks after clean.  Online Mode.")
+// 	} else {
+// 		Logger.Debugf("Removing invalid blocks after clean.  Exclusive Mode.")
+// 	}
 
-	prefix := fsrepo.FilestoreMount
+// 	prefix := fsrepo.FilestoreMount
 
-	go func() {
-		defer close(out)
+// 	go func() {
+// 		defer close(out)
 
-		unlocker := mbs.GCLock()
-		defer unlocker.Unlock()
+// 		unlocker := mbs.GCLock()
+// 		defer unlocker.Unlock()
 
-		stillOkay := butil.FilterPinned(mbs, pins, out, keys, prefix)
+// 		stillOkay := butil.FilterPinned(mbs, pins, out, keys, prefix)
 
-		for _, k := range stillOkay {
-			keyBytes := dshelp.CidToDsKey(k).Bytes()
-			var origVal []byte
-			if snap.Defined() {
-				var err error
-				origVal, err = snap.DB().Get(keyBytes, nil)
-				if err != nil {
-					out <- &butil.RemovedBlock{Hash: k.String(), Error: err.Error()}
-					continue
-				}
-			}
-			ok, err := fs.Update(keyBytes, origVal, nil)
-			// Update does not return an error if the key no longer exist
-			if err != nil {
-				out <- &butil.RemovedBlock{Hash: k.String(), Error: err.Error()}
-			} else if !ok {
-				out <- &butil.RemovedBlock{Hash: k.String(), Error: "value changed"}
-			} else {
-				out <- &butil.RemovedBlock{Hash: k.String()}
-			}
-		}
-	}()
+// 		for _, k := range stillOkay {
+// 			dbKey := NewDbKey(dshelp.CidToDsKey(k).String(), "", -1, k)
+// 			var err error
+// 			if snap.Defined() {
+// 				origVal, err0 := snap.DB().Get(dbKey)
+// 				if err0 != nil {
+// 					out <- &butil.RemovedBlock{Hash: dbKey.Format(), Error: err.Error()}
+// 					continue
+// 				}
+// 				dbKey = NewDbKey(dbKey.Hash, origVal.FilePath, int64(origVal.Offset), k)
+// 				err = fs.DelDirect(dbKey, NotPinned)
+// 			} else {
+// 				// we have an exclusive lock
+// 				err = fs.DB().Delete(dbKey.Bytes)
+// 			}
+// 			if err != nil {
+// 				out <- &butil.RemovedBlock{Hash: dbKey.Format(), Error: err.Error()}
+// 			} else {
+// 				out <- &butil.RemovedBlock{Hash: dbKey.Format()}
+// 			}
+// 		}
+// 	}()
 
-	return out
-}
+// 	return out
+// }
 
 // this function is used for testing in order to test for race
 // conditions

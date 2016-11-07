@@ -68,6 +68,50 @@ func (d *DataObj) StripData() DataObj {
 	}
 }
 
+func (d *DataObj) KeyStr(key Key, asKey bool) string {
+	if key.FilePath == "" {
+		res := key.Format()
+		if asKey {
+			res += "/"
+		} else {
+			res += " /"
+		}
+		res += d.FilePath
+		res += "//"
+		res += fmt.Sprintf("%d", d.Offset)
+		return res
+	} else {
+		return key.Format()
+	}
+}
+
+func (d *DataObj) TypeStr() string {
+	str := "";
+	if d.WholeFile() {
+		str += "ROOT "
+	} else if d.Internal() {
+		str += "other";
+	} else {
+		str += "leaf ";
+	}
+	if d.Invalid() && d.NoBlockData() {
+		str += " invld";
+	} else if d.NoBlockData() {
+		str += " extrn";
+	} else {
+		str += "      ";
+	}
+	return str
+}
+
+func (d *DataObj) DateStr() string {
+	if d.NoBlockData() {
+		return ToTime(d.ModTime).Format("2006-01-02T15:04:05.000Z07:00")
+	} else {
+		return ""
+	}
+}
+
 func (d *DataObj) Format() string {
 	offset := fmt.Sprintf("%d", d.Offset)
 	if d.WholeFile() {
@@ -119,17 +163,6 @@ func (d *DataObj) Unmarshal(data []byte) error {
 
 	if pd.Flags != nil {
 		d.Flags = *pd.Flags
-	}
-
-	if pd.NoBlockData != nil && *pd.NoBlockData {
-		d.Flags |= NoBlockData
-	}
-	if pd.WholeFile != nil && *pd.WholeFile {
-		d.Flags |= WholeFile
-	}
-	if pd.FileRoot != nil && *pd.FileRoot {
-		d.Flags |= Internal
-		d.Flags |= WholeFile
 	}
 
 	if pd.FilePath != nil {
