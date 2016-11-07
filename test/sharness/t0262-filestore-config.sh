@@ -11,9 +11,7 @@ test_description="Test filestore"
 
 test_init_ipfs
 
-test_enable_filestore
-
-test_add_cat_file "filestore add" "`pwd`" "QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH"
+test_add_cat_file "add --no-copy" "`pwd`" "QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH"
 
 export IPFS_LOGGING=debug
 export IPFS_LOGGING_FMT=nocolor

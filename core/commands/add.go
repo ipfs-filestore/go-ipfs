@@ -39,6 +39,7 @@ const (
 	pinOptionName       = "pin"
 	rawLeavesOptionName = "raw-leaves"
 	allowDupName        = "allow-dup"
+	noCopyName          = "no-copy"
 )
 
 var AddCmd = &cmds.Command{
@@ -87,12 +88,16 @@ You can now refer to the added file in a gateway, like so:
 		cmds.BoolOption(pinOptionName, "Pin this object when adding.").Default(true),
 		cmds.BoolOption(rawLeavesOptionName, "Use raw blocks for leaf nodes. (experimental)"),
 		cmds.BoolOption(allowDupName, "Add even if blocks are in non-cache blockstore.").Default(false),
+		cmds.BoolOption(noCopyName, "Don't copy file contents. (experimental)"),
 	},
 	PreRun: func(req cmds.Request) error {
 		wrap, _, _ := req.Option(wrapOptionName).Bool()
 		recursive, _, _ := req.Option(cmds.RecLong).Bool()
 		sliceFile, ok := req.Files().(*files.SliceFile)
-		if ok && !wrap && recursive && sliceFile.NumFiles() > 1 {
+		if !ok {
+			return fmt.Errorf("type assertion failed: req.Files().(*files.SliceFile)")
+		}
+		if !wrap && recursive && sliceFile.NumFiles() > 1 {
 			return fmt.Errorf("adding multiple directories without '-w' unsupported")
 		}
 
@@ -154,8 +159,7 @@ You can now refer to the added file in a gateway, like so:
 		rawblks, _, _ := req.Option(rawLeavesOptionName).Bool()
 		recursive, _, _ := req.Option(cmds.RecLong).Bool()
 		allowDup, _, _ := req.Option(allowDupName).Bool()
-
-		nocopy, _ := req.Values()["no-copy"].(bool)
+		nocopy, _, _ := req.Option(noCopyName).Bool()
 
 		if hash {
 			nilnode, err := core.NewNode(n.Context(), &core.BuildCfg{

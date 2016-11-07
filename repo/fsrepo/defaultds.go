@@ -74,6 +74,7 @@ func openDefaultDatastore(r *FSRepo) (repo.Datastore, []Mount, error) {
 	})
 	directMounts = append(directMounts, Mount{CacheMount, blocksDS})
 
+	InitFilestore(r.path)
 	fileStore, err := r.newFilestore()
 	if err != nil {
 		return nil, nil, err
