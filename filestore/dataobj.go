@@ -62,12 +62,6 @@ func ToTime(t float64) time.Time {
 	return time.Unix(int64(sec), int64(frac*1000000000.0))
 }
 
-func (d *DataObj) StripData() DataObj {
-	return DataObj{
-		d.Flags, d.FilePath, d.Offset, d.Size, d.ModTime, nil,
-	}
-}
-
 func (d *DataObj) KeyStr(key Key, asKey bool) string {
 	if key.FilePath == "" {
 		res := key.Format()
@@ -82,50 +76,6 @@ func (d *DataObj) KeyStr(key Key, asKey bool) string {
 		return res
 	} else {
 		return key.Format()
-	}
-}
-
-func (d *DataObj) TypeStr() string {
-	str := "";
-	if d.WholeFile() {
-		str += "ROOT "
-	} else if d.Internal() {
-		str += "other";
-	} else {
-		str += "leaf ";
-	}
-	if d.Invalid() && d.NoBlockData() {
-		str += " invld";
-	} else if d.NoBlockData() {
-		str += " extrn";
-	} else {
-		str += "      ";
-	}
-	return str
-}
-
-func (d *DataObj) DateStr() string {
-	if d.NoBlockData() {
-		return ToTime(d.ModTime).Format("2006-01-02T15:04:05.000Z07:00")
-	} else {
-		return ""
-	}
-}
-
-func (d *DataObj) Format() string {
-	offset := fmt.Sprintf("%d", d.Offset)
-	if d.WholeFile() {
-		offset = "-"
-	}
-	date := ToTime(d.ModTime).Format("2006-01-02T15:04:05.000Z07:00")
-	if d.Invalid() && d.NoBlockData() {
-		return fmt.Sprintf("invld %s %s %d %s", d.FilePath, offset, d.Size, date)
-	} else if d.NoBlockData() {
-		return fmt.Sprintf("leaf  %s %s %d %s", d.FilePath, offset, d.Size, date)
-	} else if d.Internal() && d.WholeFile() {
-		return fmt.Sprintf("root  %s %s %d", d.FilePath, offset, d.Size)
-	} else {
-		return fmt.Sprintf("other %s %s %d", d.FilePath, offset, d.Size)
 	}
 }
 

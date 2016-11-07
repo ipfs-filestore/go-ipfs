@@ -40,26 +40,6 @@ type Datastore struct {
 	// such as computing a hash or any sort of I/O.
 	updateLock sync.Mutex
 
-	// A snapshot of the DB the last time it was in a consistent
-	// state, if null than there are no outstanding adds
-	snapshot Snapshot
-	// If the snapshot was used, if not true than Release() can be
-	// called to help save space
-	snapshotUsed bool
-
-	addLocker addLocker
-
-	// maintenanceLock is designed to be help for a longer period
-	// of time.  It, as it names suggests, is designed to be avoid
-	// race conditions during maintenance.  Operations that add
-	// blocks are expected to already be holding the "read" lock.
-	// Maintaince operations will hold an exclusive lock.
-	//maintLock  sync.RWMutex
-}
-
-type Basic struct {
-	db dbread
-	ds *Datastore
 }
 
 func Init(path string) error {
@@ -83,7 +63,6 @@ func New(path string, verify VerifyWhen, noCompression bool) (*Datastore, error)
 		return nil, err
 	}
 	ds := &Datastore{db: dbwrap{dbread{db}, db}, verify: verify}
-	ds.addLocker.ds = ds
 	return ds, nil
 }
 
@@ -232,7 +211,7 @@ func (d *Datastore) updateGood(hash *DbKey, key *DbKey, dataObj *DataObj) {
 //
 // In addition to the date GteDirect will return the key the block was
 // found under.
-func (d *Basic) GetDirect(key *DbKey) (*DbKey, *DataObj, error) {
+func (d *Datastore) GetDirect(key *DbKey) (*DbKey, *DataObj, error) {
 	if string(key.Bytes) != key.String() {
 		panic(string(key.Bytes) + " != " + key.String())
 	}
@@ -251,7 +230,7 @@ func (d *Basic) GetDirect(key *DbKey) (*DbKey, *DataObj, error) {
 
 // We have a key with filename and offset that was not found directly.
 // Check to see it it was stored just using the hash.
-func (d *Basic) getIndirect(hash *DbKey, key *DbKey) (*DbKey, *DataObj, error) {
+func (d *Datastore) getIndirect(hash *DbKey, key *DbKey) (*DbKey, *DataObj, error) {
 	val, err := d.db.GetHash(hash.Bytes)
 	if err == leveldb.ErrNotFound {
 		return nil, nil, ds.ErrNotFound
@@ -266,16 +245,12 @@ func (d *Basic) getIndirect(hash *DbKey, key *DbKey) (*DbKey, *DataObj, error) {
 	return hash, val, nil
 }
 
-func (d *Datastore) GetDirect(key *DbKey) (*DbKey, *DataObj, error) {
-	return d.AsBasic().GetDirect(key)
-}
-
 type KeyVal struct {
 	Key *DbKey
 	Val *DataObj
 }
 
-func (d *Basic) GetAll(k *DbKey) ([]KeyVal, error) {
+func (d *Datastore) GetAll(k *DbKey) ([]KeyVal, error) {
 	//println("GetAll:", k.Format())
 	hash := k.HashOnly()
 	dataObj, err := d.db.GetHash(hash.Bytes)
@@ -355,7 +330,7 @@ func (d *Datastore) DelDirect(key *DbKey, isPinned IsPinned) error {
 	}
 	hash := NewDbKey(key.Hash, "", -1, nil)
 
-	_, _, err = d.AsBasic().getIndirect(hash, key)
+	_, _, err = d.getIndirect(hash, key)
 	if err != nil {
 		return err
 	}
