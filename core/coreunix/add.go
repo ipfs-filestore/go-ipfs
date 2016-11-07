@@ -2,7 +2,6 @@ package coreunix
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -68,8 +67,14 @@ type AddedObject struct {
 	Bytes int64  `json:",omitempty"`
 }
 
-func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.DAGService, useRoot bool) (*Adder, error) {
-	adder := &Adder{
+func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.DAGService) (*Adder, error) {
+	mr, err := mfs.NewRoot(ctx, ds, unixfs.EmptyDirNode(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Adder{
+		mr:         mr,
 		ctx:        ctx,
 		pinning:    p,
 		blockstore: bs,
@@ -80,17 +85,8 @@ func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.
 		Trickle:    false,
 		Wrap:       false,
 		Chunker:    "",
-	}
+	}, nil
 
-	if useRoot {
-		mr, err := mfs.NewRoot(ctx, ds, unixfs.EmptyDirNode(), nil)
-		if err != nil {
-			return nil, err
-		}
-		adder.mr = mr
-	}
-
-	return adder, nil
 }
 
 // Internal structure for holding the switches passed to the `add` call
@@ -108,7 +104,6 @@ type Adder struct {
 	Silent     bool
 	Wrap       bool
 	Chunker    string
-	FullName   bool
 	root       node.Node
 	mr         *mfs.Root
 	unlocker   bs.Unlocker
@@ -139,10 +134,6 @@ func (adder Adder) add(reader io.Reader) (node.Node, error) {
 }
 
 func (adder *Adder) RootNode() (node.Node, error) {
-	if adder.mr == nil {
-		return nil, nil
-	}
-
 	// for memoizing
 	if adder.root != nil {
 		return adder.root, nil
@@ -168,10 +159,6 @@ func (adder *Adder) RootNode() (node.Node, error) {
 }
 
 func (adder *Adder) PinRoot() error {
-	if adder.mr == nil {
-		return nil
-	}
-
 	root, err := adder.RootNode()
 	if err != nil {
 		return err
@@ -198,13 +185,6 @@ func (adder *Adder) PinRoot() error {
 }
 
 func (adder *Adder) Finalize() (node.Node, error) {
-	if adder.mr == nil && adder.Pin {
-		err := adder.pinning.Flush()
-		return nil, err
-	} else if adder.mr == nil {
-		return nil, nil
-	}
-
 	root := adder.mr.GetValue()
 
 	// cant just call adder.RootNode() here as we need the name for printing
@@ -276,7 +256,7 @@ func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
 func Add(n *core.IpfsNode, r io.Reader) (string, error) {
 	defer n.Blockstore.PinLock().Unlock()
 
-	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG, true)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
@@ -304,7 +284,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 	}
 	defer f.Close()
 
-	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG, true)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +308,7 @@ func AddR(n *core.IpfsNode, root string) (key string, err error) {
 // the directory, and and error if any.
 func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, node.Node, error) {
 	file := files.NewReaderFile(filename, filename, ioutil.NopCloser(r), nil)
-	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG, true)
+	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
 	if err != nil {
 		return "", nil, err
 	}
@@ -350,38 +330,25 @@ func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, node.No
 	return gopath.Join(c.String(), filename), dagnode, nil
 }
 
-func (adder *Adder) pinOrAddNode(node node.Node, file files.File) error {
-	path := file.FileName()
+func (adder *Adder) addNode(node node.Node, path string) error {
+	// patch it into the root
+	if path == "" {
+		path = node.Cid().String()
+	}
 
-	if adder.Pin && adder.mr == nil {
-
-		adder.pinning.PinWithMode(node.Cid(), pin.Recursive)
-
-	} else if adder.mr != nil {
-
-		// patch it into the root
-		if path == "" {
-			path = node.Cid().String()
-		}
-
-		dir := gopath.Dir(path)
-		if dir != "." {
-			if err := mfs.Mkdir(adder.mr, dir, true, false); err != nil {
-				return err
-			}
-		}
-
-		if err := mfs.PutNode(adder.mr, path, node); err != nil {
+	dir := gopath.Dir(path)
+	if dir != "." {
+		if err := mfs.Mkdir(adder.mr, dir, true, false); err != nil {
 			return err
 		}
-
 	}
+
+	if err := mfs.PutNode(adder.mr, path, node); err != nil {
+		return err
+	}
+
 	if !adder.Silent {
-		if adder.FullName {
-			return outputDagnode(adder.Out, file.FullPath(), node)
-		} else {
-			return outputDagnode(adder.Out, file.FileName(), node)
-		}
+		return outputDagnode(adder.Out, path, node)
 	}
 	return nil
 }
@@ -423,7 +390,7 @@ func (adder *Adder) addFile(file files.File) error {
 			return err
 		}
 
-		return adder.pinOrAddNode(dagnode, s)
+		return adder.addNode(dagnode, s.FileName())
 	}
 
 	// case for regular file
@@ -445,14 +412,10 @@ func (adder *Adder) addFile(file files.File) error {
 	}
 
 	// patch it into the root
-	return adder.pinOrAddNode(dagnode, file)
+	return adder.addNode(dagnode, file.FileName())
 }
 
 func (adder *Adder) addDir(dir files.File) error {
-	if adder.mr == nil {
-		return errors.New("cannot add directories without mfs root")
-	}
-
 	log.Infof("adding directory: %s", dir.FileName())
 
 	err := mfs.Mkdir(adder.mr, dir.FileName(), true, false)

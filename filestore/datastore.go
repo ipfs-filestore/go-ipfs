@@ -42,6 +42,10 @@ type Datastore struct {
 
 }
 
+func (d *Datastore) DB() dbwrap {
+	return d.db
+}
+
 func Init(path string) error {
 	db, err := leveldb.OpenFile(path, &opt.Options{
 		Compression: opt.NoCompression,

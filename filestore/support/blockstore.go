@@ -106,6 +106,14 @@ func (bs *blockstore) prepareBlock(k ds.Key, block b.Block) (*DataObj, error) {
 	} else {
 		fsn, ok := block.(*pi.FilestoreNode)
 		if !ok {
+			// Hack to get around the fact that Adder.PinRoot() might
+			// readd the same hash, but as a ProtoNode instead of a
+			// FilestoreNode, see:
+	        //   https://github.com/ipfs/go-ipfs/pull/3258#issuecomment-259027672
+			have, _ := bs.filestore.DB().HasHash(k.Bytes())
+			if have {
+				return nil, nil
+			}
 			return nil, fmt.Errorf("%s: no file information for block", block.Cid())
 		}
 		posInfo := fsn.PosInfo

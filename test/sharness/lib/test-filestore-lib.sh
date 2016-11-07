@@ -20,7 +20,7 @@ test_add_cat_file() {
     '
 
     test_expect_success "ipfs $cmd output looks good" '
-        echo "added $HASH "$dir"/mountdir/hello.txt" >expected &&
+        echo "added $HASH hello.txt" >expected &&
     	test_cmp expected actual
     '
 
@@ -47,7 +47,7 @@ test_add_empty_file() {
     '
 
     test_expect_success "ipfs $cmd on empty file output looks good" '
-        echo "added $EMPTY_HASH "$dir"/mountdir/empty.txt" >expected &&
+        echo "added $EMPTY_HASH empty.txt" >expected &&
         test_cmp expected actual
     '
 
@@ -124,7 +124,7 @@ test_add_cat_5MB() {
     '
 
     test_expect_success "'ipfs $cmd bigfile' output looks good" '
-    	echo "added $HASH "$dir"/mountdir/bigfile" >expected &&
+    	echo "added $HASH bigfile" >expected &&
     	test_cmp expected actual
     '
 
@@ -157,7 +157,7 @@ test_add_cat_200MB() {
     '
 
     test_expect_success "'ipfs add hugefile' output looks good" '
-    	echo "added $HASH "$dir"/mountdir/hugefile" >expected &&
+    	echo "added $HASH hugefile" >expected &&
     	test_cmp expected actual
     '
 
