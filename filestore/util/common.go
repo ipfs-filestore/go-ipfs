@@ -12,10 +12,10 @@ import (
 	b "github.com/ipfs/go-ipfs/blocks/blockstore"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	node "gx/ipfs/QmU7bFWQ793qmvNy7outdCaMfSDNk8uqhx4VNrxYj5fj5g/go-ipld-node"
-	cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	//cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 	//"gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
-	dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
+	//dshelp "github.com/ipfs/go-ipfs/thirdparty/ds-help"
 )
 
 type VerifyLevel int
@@ -57,54 +57,69 @@ const (
 	ShowChildren        = 7
 )
 
+type Status int16
+
 const (
-	StatusDefault     = 0 // 00 = default
-	StatusOk          = 1 // 01 = leaf node okay
-	StatusAllPartsOk  = 2 // 02 = all children have "ok" status
-	StatusFound       = 5 // 05 = Found key, but not in filestore
-	StatusOrphan      = 8
-	StatusAppended    = 9
-	StatusFileError   = 10 // 1x means error with block
-	StatusFileMissing = 11
-	StatusFileChanged = 12
-	StatusIncomplete  = 20 // 2x means error with non-block node
-	StatusProblem     = 21 // 21 if some children exist but could not be read
-	StatusError       = 30 // 3x means error with database itself
-	StatusKeyNotFound = 31
-	StatusCorrupt     = 32
-	StatusUnchecked   = 80 // 8x means unchecked
-	StatusComplete    = 82 // 82 = All parts found
-	StatusMarked      = 90 // 9x is for internal use
+	StatusNone Status = 0 // 00 = default
+
+	CategoryOk       Status = 0
+	StatusOk         Status = 1 // 01 = leaf node okay
+	StatusAllPartsOk Status = 2 // 02 = all children have "ok" status
+	StatusFound      Status = 5 // 05 = Found key, but not in filestore
+	StatusOrphan     Status = 8
+	StatusAppended   Status = 9
+
+	CategoryBlockErr  Status = 10 // 1x means error with block
+	StatusFileError   Status = 10
+	StatusFileMissing Status = 11
+	StatusFileChanged Status = 12
+	StatusFileTouched Status = 13
+
+	CategoryNodeErr  Status = 20 // 2x means error with non-block node
+	StatusProblem    Status = 20 // 20 if some children exist but could not be read
+	StatusIncomplete Status = 21
+
+	CategoryOtherErr  Status = 30 // 3x means error with database itself
+	StatusError       Status = 30
+	StatusCorrupt     Status = 31
+	StatusKeyNotFound Status = 32
+
+	CategoryUnchecked Status = 80 // 8x means unchecked
+	StatusUnchecked   Status = 80
+	StatusComplete    Status = 82 // 82 = All parts found
+
+	CategoryInternal Status = 90
+	StatusMarked     Status = 90 // 9x is for internal use
 )
 
-func AnInternalError(status int) bool {
+func AnInternalError(status Status) bool {
 	return status == StatusError || status == StatusCorrupt
 }
 
-func AnError(status int) bool {
-	return 10 <= status && status < 80
+func AnError(status Status) bool {
+	return Status(10) <= status && status < Status(80)
 }
 
-func IsOk(status int) bool {
+func IsOk(status Status) bool {
 	return status == StatusOk || status == StatusAllPartsOk
 }
 
-func Unchecked(status int) bool {
+func Unchecked(status Status) bool {
 	return status == StatusUnchecked || status == StatusComplete
 }
 
-func InternalNode(status int) bool {
+func InternalNode(status Status) bool {
 	return status == StatusAllPartsOk || status == StatusIncomplete ||
 		status == StatusProblem || status == StatusComplete
 }
 
-func OfInterest(status int) bool {
+func OfInterest(status Status) bool {
 	return !IsOk(status) && !Unchecked(status)
 }
 
-func statusStr(status int) string {
+func statusStr(status Status) string {
 	switch status {
-	case 0:
+	case StatusNone:
 		return ""
 	case StatusOk, StatusAllPartsOk:
 		return "ok       "
@@ -120,6 +135,8 @@ func statusStr(status int) string {
 		return "no-file  "
 	case StatusFileChanged:
 		return "changed  "
+	case StatusFileTouched:
+		return "touched  "
 	case StatusIncomplete:
 		return "incomplete "
 	case StatusProblem:
@@ -140,12 +157,12 @@ func statusStr(status int) string {
 }
 
 type ListRes struct {
-	Key ds.Key
+	Key Key
 	*DataObj
-	Status int
+	Status Status
 }
 
-var EmptyListRes = ListRes{ds.NewKey(""), nil, 0}
+var EmptyListRes = ListRes{Key{"", "", -1}, nil, 0}
 
 func (r *ListRes) What() string {
 	if r.WholeFile() {
@@ -168,19 +185,78 @@ func (r *ListRes) MHash() string {
 	return MHash(r.Key)
 }
 
-func (r *ListRes) RawHash() []byte {
-	return r.Key.Bytes()[1:]
+func (r *ListRes) FormatHashOnly() string {
+	if r.Key.Hash == "" {
+		return "\n"
+	} else {
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), MHash(r.Key))
+	}
 }
 
-func (r *ListRes) Format() string {
-	if string(r.RawHash()) == "" {
+func (r *ListRes) FormatKeyOnly() string {
+	if r.Key.Hash == "" {
 		return "\n"
-	}
-	mhash := r.MHash()
-	if r.DataObj == nil {
-		return fmt.Sprintf("%s%s\n", statusStr(r.Status), mhash)
 	} else {
-		return fmt.Sprintf("%s%s %s\n", statusStr(r.Status), mhash, r.DataObj.Format())
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), r.Key.Format())
+	}
+}
+
+func (r *ListRes) FormatDefault(fullKey bool) string {
+	if r.Key.Hash == "" {
+		return "\n"
+	} else if r.DataObj == nil {
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), r.Key.Format())
+	} else {
+		return fmt.Sprintf("%s%s\n", statusStr(r.Status), r.DataObj.KeyStr(r.Key, fullKey))
+	}
+}
+
+func (r *ListRes) FormatWithType(fullKey bool) string {
+	if r.Key.Hash == "" {
+		return "\n"
+	} else if r.DataObj == nil {
+		return fmt.Sprintf("%s      %s\n", statusStr(r.Status), r.Key.Format())
+	} else {
+		return fmt.Sprintf("%s%s %s\n", statusStr(r.Status), r.TypeStr(), r.DataObj.KeyStr(r.Key, fullKey))
+	}
+}
+
+func (r *ListRes) FormatLong(fullKey bool) string {
+	if r.Key.Hash == "" {
+		return "\n"
+	} else if r.DataObj == nil {
+		return fmt.Sprintf("%s%49s  %s\n", statusStr(r.Status), "", r.Key.Format())
+	} else if r.NoBlockData() {
+		return fmt.Sprintf("%s%s %12d %30s  %s\n", statusStr(r.Status), r.TypeStr(), r.Size, r.DateStr(), r.DataObj.KeyStr(r.Key, fullKey))
+	} else {
+		return fmt.Sprintf("%s%s %12d %30s  %s\n", statusStr(r.Status), r.TypeStr(), r.Size, "", r.DataObj.KeyStr(r.Key, fullKey))
+	}
+}
+
+func StrToFormatFun(str string, fullKey bool) (func(*ListRes) (string,error), error) {
+	switch str {
+	case "hash":
+		return func(r *ListRes) (string,error) {
+			return r.FormatHashOnly(), nil
+		}, nil
+	case "key":
+		return func(r *ListRes) (string,error) {
+			return r.FormatKeyOnly(), nil
+		}, nil
+	case "default", "":
+		return func(r *ListRes) (string,error) {
+			return r.FormatDefault(fullKey), nil
+		}, nil
+	case "w/type":
+		return func(r *ListRes) (string,error) {
+			return r.FormatWithType(fullKey), nil
+		}, nil
+	case "long":
+		return func(r *ListRes) (string,error) {
+			return r.FormatLong(fullKey), nil
+		}, nil
+	default:
+		return nil, fmt.Errorf("invalid format type: %s", str)
 	}
 }
 
@@ -192,14 +268,14 @@ func ListKeys(d *Basic) <-chan ListRes {
 type ListFilter func(*DataObj) bool
 
 func List(d *Basic, filter ListFilter, keysOnly bool) (<-chan ListRes, error) {
-	iter := ListIterator{d.NewIterator(), filter}
+	iter := ListIterator{d.DB().NewIterator(), filter}
 
 	if keysOnly {
 		out := make(chan ListRes, 1024)
 		go func() {
 			defer close(out)
 			for iter.Next() {
-				out <- ListRes{Key: iter.Key()}
+				out <- ListRes{Key: iter.Key().Key}
 			}
 		}()
 		return out, nil
@@ -208,8 +284,8 @@ func List(d *Basic, filter ListFilter, keysOnly bool) (<-chan ListRes, error) {
 		go func() {
 			defer close(out)
 			for iter.Next() {
-				res := ListRes{Key: iter.Key()}
-				_, res.DataObj, _ = iter.Value()
+				res := ListRes{Key: iter.Key().Key}
+				res.DataObj, _ = iter.Value()
 				out <- res
 			}
 		}()
@@ -221,16 +297,15 @@ var ListFilterAll ListFilter = nil
 
 func ListFilterWholeFile(r *DataObj) bool { return r.WholeFile() }
 
-func ListByKey(fs *Basic, ks []*cid.Cid) (<-chan ListRes, error) {
+func ListByKey(fs *Basic, ks []*DbKey) (<-chan ListRes, error) {
 	out := make(chan ListRes, 128)
 
 	go func() {
 		defer close(out)
 		for _, k := range ks {
-			dsKey := dshelp.CidToDsKey(k)
-			_, dataObj, err := fs.GetDirect(dsKey)
-			if err == nil {
-				out <- ListRes{dsKey, dataObj, 0}
+			res, _ := fs.GetAll(k)
+			for _, kv := range res {
+				out <- ListRes{Key: kv.Key.Key, DataObj: kv.Val}
 			}
 		}
 	}()
@@ -247,7 +322,7 @@ func (itr ListIterator) Next() bool {
 		if itr.Filter == nil {
 			return true
 		}
-		_, val, _ := itr.Value()
+		val, _ := itr.Value()
 		if val == nil {
 			// an error ...
 			return true
@@ -261,17 +336,17 @@ func (itr ListIterator) Next() bool {
 	return false
 }
 
-func verify(d *Basic, key ds.Key, origData []byte, val *DataObj, level VerifyLevel) int {
+func verify(d *Basic, key *DbKey, val *DataObj, level VerifyLevel) Status {
 	var err error
 	switch level {
 	case CheckExists:
 		return StatusUnchecked
 	case CheckFast:
-		err = VerifyFast(key, val)
+		err = VerifyFast(val)
 	case CheckIfChanged:
-		_, err = GetData(d.AsFull(), key, origData, val, VerifyIfChanged)
+		_, err = GetData(d.AsFull(), key, val, VerifyIfChanged)
 	case CheckAlways:
-		_, err = GetData(d.AsFull(), key, origData, val, VerifyAlways)
+		_, err = GetData(d.AsFull(), key, val, VerifyAlways)
 	default:
 		return StatusError
 	}
@@ -280,42 +355,46 @@ func verify(d *Basic, key ds.Key, origData []byte, val *DataObj, level VerifyLev
 		return StatusOk
 	} else if os.IsNotExist(err) {
 		return StatusFileMissing
-	} else if _, ok := err.(InvalidBlock); ok || err == io.EOF || err == io.ErrUnexpectedEOF {
+	} else if err == InvalidBlock || err == io.EOF || err == io.ErrUnexpectedEOF {
 		return StatusFileChanged
+	} else if err == TouchedBlock {
+		return StatusFileTouched
 	} else {
 		return StatusFileError
 	}
 }
 
-func getNode(dsKey ds.Key, fs *Basic, bs b.Blockstore) ([]byte, *DataObj, []*node.Link, int) {
-	origData, dataObj, err := fs.GetDirect(dsKey)
+func getNodes(key *DbKey, fs *Basic, bs b.Blockstore) ([]KeyVal, []*node.Link, Status) {
+	res, err := fs.GetAll(key)
 	if err == nil {
-		if dataObj.NoBlockData() {
-			return origData, dataObj, nil, StatusUnchecked
+		if res[0].Val.NoBlockData() {
+			return res, nil, StatusUnchecked
 		} else {
-			links, err := GetLinks(dataObj)
+			links, err := GetLinks(res[0].Val)
 			if err != nil {
-				Logger.Errorf("%s: %v", MHash(dsKey), err)
-				return origData, nil, nil, StatusCorrupt
+				Logger.Errorf("%s: %v", MHash(key), err)
+				return nil, nil, StatusCorrupt
 			}
-			return origData, dataObj, links, StatusOk
+			return res[0:1], links, StatusOk
 		}
 	}
-	k, err2 := dshelp.DsKeyToCid(dsKey)
+	k, err2 := key.Cid()
 	if err2 != nil {
-		return nil, nil, nil, StatusError
+		return nil, nil, StatusError
 	}
 	block, err2 := bs.Get(k)
 	if err == ds.ErrNotFound && err2 == b.ErrNotFound {
-		return nil, nil, nil, StatusKeyNotFound
+		return nil, nil, StatusKeyNotFound
 	} else if err2 != nil {
+		Logger.Errorf("%s: %v", k, err)
 		Logger.Errorf("%s: %v", k, err2)
-		return nil, nil, nil, StatusError
+		//panic(err2)
+		return nil, nil, StatusError
 	}
 	node, err := dag.DecodeProtobuf(block.RawData())
 	if err != nil {
 		Logger.Errorf("%s: %v", k, err)
-		return nil, nil, nil, StatusCorrupt
+		return nil, nil, StatusCorrupt
 	}
-	return nil, nil, node.Links(), StatusFound
+	return nil, node.Links(), StatusFound
 }

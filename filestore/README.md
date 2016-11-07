@@ -49,6 +49,9 @@ recomputed, when it is, retrieval is slower.
 
 ## Adding all files in a directory
 
+FIXME: This section (and the add-dir script) need to be updated to
+reflect the new semantics.
+
 Adding all files in a directory using `-r` is limited.  For one thing,
 it can normally only be done with the daemon offline.  In addition it is
 not a resumable operation.  A better way is to use the "add-dir" script
@@ -85,6 +88,64 @@ later in this document for more details.
 The `add-dir` script if fairly simple way to keep a directly in sync.
 A more sophisticated application could use i-notify or a similar
 interface to re-add files as they are changed.
+
+## Server side adds
+
+When adding a file when the daemon is online.  The client sends both
+the file contents and path to the server, and the server will then
+verify that the same content is available via the specified path by
+reading the file again on the server side.  To avoid this extra
+overhead and allow directories to be added when the daemon is
+online server side paths can be used.
+
+To use this feature you must first enable API.ServerSideAdds using:
+```
+  ipfs config Filestore.APIServerSidePaths --bool true
+```
+*This option should be used with care since it will allow anyone with
+access to the API Server access to any files that the daemon has
+permission to read.* For security reasons it is probably best to only
+enable this on a single user system and to make sure the API server is
+configured to the default value of only binding to the localhost
+(`127.0.0.1`).
+
+With the `Filestore.APIServerSidePaths` option enabled you can add
+files using `filestore add -S`.  For example, to add the file
+`hello.txt` in the current directory use:
+```
+  ipfs filestore add -S -P hello.txt
+```
+## About filestore entries
+
+Each entry in the filestore is uniquely refereed to by combining the
+(1) the hash of the block, (2) the path to the file, and (3) the
+offset within the file, using the following syntax:
+```
+  <HASH>/<FILEPATH>//<OFFSET>
+```
+for example:
+```
+  QmVr26fY1tKyspEJBniVhqxQeEjhF78XerGiqWAwraVLQH//somedir/hello.txt//0
+```
+
+In the case that there is only one entry for a hash the entry is
+stored using just the hash.  If there is more than one entry for a
+hash (for example if adding two files with identical content) than one
+entry will be stored using just the hash and the others will be stored
+using the full key.  If the backing file changes or becomes
+inaccessible for the default entry (the one with just the hash) the
+other entries are tried until a valid entry is found.  Once a valid
+entry is found that entry will become the default.
+
+When listing the contents of the filestore entries that are stored
+using just the hash are displayed as
+```
+  <HASH> /<FILEPATH>//<OFFSET>
+```
+with a space between the <HASH> amd <FILEPATH>.
+
+It is always possible to refer to a specific entry in the filestore
+using the full key regardless to how it is stored.
 
 ## Listing and verifying blocks
 
@@ -153,14 +214,7 @@ also not be pinned (as that will indirectly pin filestore objects) and
 hence the directory object might be garbage collected as it is not
 stored in the filestore.
 
-To manually remove blocks use `filestore rm`.  The syntax for the
-command is the same as for `block rm` except that filestore blocks
-will be removed rather than blocks in cache.  The best way to remove
-all blocks associated with a file is to remove the root node and then
-do a `filestore clean orphan` to remove the children.  An alternative
-way is to parse `ipfs filestore ls` for all blocks associated with a
-file.  Note through, that by doing this you might remove blocks that
-are shared with another file.
+To manually remove entries in the filestore use `filestore rm`.
 
 ## Duplicate blocks.
 
@@ -193,13 +247,3 @@ value works well in most cases, but can miss some changes, espacally
 if the filesystem only tracks file modification times with a
 resolution of one second (HFS+, used by OS X) or less (FAT32).  A
 value of `Never`, never checks blocks.
-
-## Upgrading the filestore
-
-As the filestore is a work in progress changes to the format of
-filestore repository will be made from time to time.  These changes
-will be temporary backwards compatible but not forwards compatible.
-Eventually support for the old format will be removed.  While both
-versions are supported the command "filestore upgrade" can be used to
-upgrade the repository to the new format.
-
