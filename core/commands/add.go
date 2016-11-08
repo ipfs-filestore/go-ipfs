@@ -11,7 +11,7 @@ import (
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	"gx/ipfs/QmeWjRodbcZFKe5tMN7poEx3izym6osrLSnTLf9UjJZBbs/pb"
 
-	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
+	//bs "github.com/ipfs/go-ipfs/blocks/blockstore"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	files "github.com/ipfs/go-ipfs/commands/files"
@@ -38,7 +38,6 @@ const (
 	chunkerOptionName   = "chunker"
 	pinOptionName       = "pin"
 	rawLeavesOptionName = "raw-leaves"
-	allowDupName        = "allow-dup"
 	noCopyName          = "no-copy"
 )
 
@@ -87,7 +86,6 @@ You can now refer to the added file in a gateway, like so:
 		cmds.StringOption(chunkerOptionName, "s", "Chunking algorithm to use."),
 		cmds.BoolOption(pinOptionName, "Pin this object when adding.").Default(true),
 		cmds.BoolOption(rawLeavesOptionName, "Use raw blocks for leaf nodes. (experimental)"),
-		cmds.BoolOption(allowDupName, "Add even if blocks are in non-cache blockstore.").Default(false),
 		cmds.BoolOption(noCopyName, "Don't copy file contents. (experimental)"),
 	},
 	PreRun: func(req cmds.Request) error {
@@ -147,7 +145,6 @@ You can now refer to the added file in a gateway, like so:
 		chunker, _, _ := req.Option(chunkerOptionName).String()
 		dopin, _, _ := req.Option(pinOptionName).Bool()
 		rawblks, _, _ := req.Option(rawLeavesOptionName).Bool()
-		allowDup, _, _ := req.Option(allowDupName).Bool()
 		nocopy, _, _ := req.Option(noCopyName).Bool()
 
 		if hash {
@@ -180,13 +177,6 @@ You can now refer to the added file in a gateway, like so:
 				return
 			}
 			blockstore := filestore_support.NewBlockstore(n.Blockstore, fs)
-			blockService := bserv.NewWriteThrough(blockstore, exchange)
-			dagService := dag.NewDAGService(blockService)
-			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)
-		} else if allowDup {
-			// add directly to the first mount bypassing
-			// the Has() check of the multi-blockstore
-			blockstore := bs.NewGCBlockstore(n.Blockstore.FirstMount(), n.Blockstore)
 			blockService := bserv.NewWriteThrough(blockstore, exchange)
 			dagService := dag.NewDAGService(blockService)
 			fileAdder, err = coreunix.NewAdder(req.Context(), n.Pinning, blockstore, dagService)

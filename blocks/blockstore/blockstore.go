@@ -135,8 +135,11 @@ func (bs *blockstore) Get(k *cid.Cid) (blocks.Block, error) {
 func (bs *blockstore) Put(block blocks.Block) error {
 	k := dshelp.CidToDsKey(block.Cid())
 
-	// Note: The Has Check is now done by the MultiBlockstore
-
+	// Has is cheaper than Put, so see if we already have it
+	exists, err := bs.datastore.Has(k)
+	if err == nil && exists {
+		return nil // already stored.
+	}
 	return bs.datastore.Put(k, block.RawData())
 }
 
@@ -147,6 +150,11 @@ func (bs *blockstore) PutMany(blocks []blocks.Block) error {
 	}
 	for _, b := range blocks {
 		k := dshelp.CidToDsKey(b.Cid())
+		exists, err := bs.datastore.Has(k)
+		if err == nil && exists {
+			continue
+		}
+
 		err = t.Put(k, b.RawData())
 		if err != nil {
 			return err

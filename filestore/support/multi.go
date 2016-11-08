@@ -1,77 +1,38 @@
-package blockstore
+package filestore_support
 
-// A very simple multi-blockstore that analogous to a unionfs Put and
-// DeleteBlock only go to the first blockstore all others are
-// considered readonly.
+// A very simple multi-blockstore
+// Put will only go to the first store
 
 import (
 	//"errors"
 	"context"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
+	bls "github.com/ipfs/go-ipfs/blocks/blockstore"
+
 	cid "gx/ipfs/QmXfiyr2RWEXpVDdaYnD2HNiBk6UBddsvEP4RPfXb6nGqY/go-cid"
 	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
 )
 
-type LocateInfo struct {
-	Prefix string
-	Error  error
-}
-
-type MultiBlockstore interface {
-	Blockstore
-	GCLocker
-	FirstMount() Blockstore
-	Mounts() []string
-	Mount(prefix string) Blockstore
-	Locate(*cid.Cid) []LocateInfo
-}
-
-type Mount struct {
-	Prefix string
-	Blocks Blockstore
-}
-
-func NewMultiBlockstore(mounts ...Mount) *multiblockstore {
+func NewMultiBlockstore(stores ...bls.Blockstore) *multiblockstore {
 	return &multiblockstore{
-		mounts: mounts,
+		stores: stores,
 	}
 }
 
 type multiblockstore struct {
-	mounts []Mount
-	gclocker
-}
-
-func (bs *multiblockstore) FirstMount() Blockstore {
-	return bs.mounts[0].Blocks
-}
-
-func (bs *multiblockstore) Mounts() []string {
-	mounts := make([]string, 0, len(bs.mounts))
-	for _, mnt := range bs.mounts {
-		mounts = append(mounts, mnt.Prefix)
-	}
-	return mounts
-}
-
-func (bs *multiblockstore) Mount(prefix string) Blockstore {
-	for _, m := range bs.mounts {
-		if m.Prefix == prefix {
-			return m.Blocks
-		}
-	}
-	return nil
+	stores []bls.Blockstore
 }
 
 func (bs *multiblockstore) DeleteBlock(key *cid.Cid) error {
-	return bs.mounts[0].Blocks.DeleteBlock(key)
+	// FIXME: Delete from all stores
+	return bs.stores[0].DeleteBlock(key)
 }
 
 func (bs *multiblockstore) Has(c *cid.Cid) (bool, error) {
 	var firstErr error
-	for _, m := range bs.mounts {
-		have, err := m.Blocks.Has(c)
+	for _, b := range bs.stores {
+		have, err := b.Has(c)
 		if have && err == nil {
 			return have, nil
 		}
@@ -84,25 +45,16 @@ func (bs *multiblockstore) Has(c *cid.Cid) (bool, error) {
 
 func (bs *multiblockstore) Get(c *cid.Cid) (blocks.Block, error) {
 	var firstErr error
-	for _, m := range bs.mounts {
-		blk, err := m.Blocks.Get(c)
+	for _, b := range bs.stores {
+		blk, err := b.Get(c)
 		if err == nil {
 			return blk, nil
 		}
-		if firstErr == nil || firstErr == ErrNotFound {
+		if firstErr == nil || firstErr == bls.ErrNotFound {
 			firstErr = err
 		}
 	}
 	return nil, firstErr
-}
-
-func (bs *multiblockstore) Locate(c *cid.Cid) []LocateInfo {
-	res := make([]LocateInfo, 0, len(bs.mounts))
-	for _, m := range bs.mounts {
-		_, err := m.Blocks.Get(c)
-		res = append(res, LocateInfo{m.Prefix, err})
-	}
-	return res
 }
 
 func (bs *multiblockstore) Put(blk blocks.Block) error {
@@ -113,7 +65,7 @@ func (bs *multiblockstore) Put(blk blocks.Block) error {
 	if err == nil && exists {
 		return nil // already stored
 	}
-	return bs.mounts[0].Blocks.Put(blk)
+	return bs.stores[0].Put(blk)
 }
 
 func (bs *multiblockstore) PutMany(blks []blocks.Block) error {
@@ -131,15 +83,15 @@ func (bs *multiblockstore) PutMany(blks []blocks.Block) error {
 	if len(stilladd) == 0 {
 		return nil
 	}
-	return bs.mounts[0].Blocks.PutMany(stilladd)
+	return bs.stores[0].PutMany(stilladd)
 }
 
 func (bs *multiblockstore) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
-	//return bs.mounts[0].Blocks.AllKeysChan(ctx)
+	//return bs.stores[0].Blocks.AllKeysChan(ctx)
 	//return nil, errors.New("Unimplemented")
-	in := make([]<-chan *cid.Cid, 0, len(bs.mounts))
-	for _, m := range bs.mounts {
-		ch, err := m.Blocks.AllKeysChan(ctx)
+	in := make([]<-chan *cid.Cid, 0, len(bs.stores))
+	for _, b := range bs.stores {
+		ch, err := b.AllKeysChan(ctx)
 		if err != nil {
 			return nil, err
 		}

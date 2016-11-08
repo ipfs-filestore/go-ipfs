@@ -27,23 +27,14 @@ type RmBlocksOpts struct {
 	Force  bool
 }
 
-func RmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, cids []*cid.Cid, opts RmBlocksOpts) error {
-	prefix := opts.Prefix
-	if prefix == "" {
-		prefix = mbs.Mounts()[0]
-	}
-	blocks := mbs.Mount(prefix)
-	if blocks == nil {
-		return fmt.Errorf("Could not find blockstore: %s\n", prefix)
-	}
-
+func RmBlocks(blocks bs.GCBlockstore, pins pin.Pinner, out chan<- interface{}, cids []*cid.Cid, opts RmBlocksOpts) error {
 	go func() {
 		defer close(out)
 
-		unlocker := mbs.GCLock()
+		unlocker := blocks.GCLock()
 		defer unlocker.Unlock()
 
-		stillOkay := FilterPinned(mbs, pins, out, cids, prefix)
+		stillOkay := FilterPinned(pins, out, cids)
 
 		for _, c := range stillOkay {
 			err := blocks.DeleteBlock(c)
@@ -59,7 +50,7 @@ func RmBlocks(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, c
 	return nil
 }
 
-func FilterPinned(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{}, cids []*cid.Cid, prefix string) []*cid.Cid {
+func FilterPinned(pins pin.Pinner, out chan<- interface{}, cids []*cid.Cid) []*cid.Cid {
 	stillOkay := make([]*cid.Cid, 0, len(cids))
 	res, err := pins.CheckIfPinned(cids...)
 	if err != nil {
@@ -67,7 +58,7 @@ func FilterPinned(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{
 		return nil
 	}
 	for _, r := range res {
-		if !r.Pinned() || AvailableElsewhere(mbs, prefix, r.Key) {
+		if !r.Pinned() {
 			stillOkay = append(stillOkay, r.Key)
 		} else {
 			out <- &RemovedBlock{
@@ -77,16 +68,6 @@ func FilterPinned(mbs bs.MultiBlockstore, pins pin.Pinner, out chan<- interface{
 		}
 	}
 	return stillOkay
-}
-
-func AvailableElsewhere(mbs bs.MultiBlockstore, prefix string, c *cid.Cid) bool {
-	locations := mbs.Locate(c)
-	for _, loc := range locations {
-		if loc.Error == nil && loc.Prefix != prefix {
-			return true
-		}
-	}
-	return false
 }
 
 func ProcRmOutput(in <-chan interface{}, sout io.Writer, serr io.Writer) error {

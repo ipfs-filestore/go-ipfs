@@ -96,7 +96,7 @@ type IpfsNode struct {
 
 	// Services
 	Peerstore  pstore.Peerstore       // storage for other Peer instances
-	Blockstore bstore.MultiBlockstore // the block store (lower level)
+	Blockstore bstore.GCBlockstore    // the block store (lower level)
 	Blocks     bserv.BlockService     // the block service, get/add blocks.
 	DAG        merkledag.DAGService   // the merkle dag service, get/add objects.
 	Resolver   *path.Resolver         // the path resolution system

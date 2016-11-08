@@ -171,7 +171,7 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 	}
 
 	var err error
-	bs := bstore.NewBlockstoreWPrefix(rds, fsrepo.CacheMount)
+	bs := bstore.NewBlockstore(rds)
 	opts := bstore.DefaultCacheOpts()
 	conf, err := n.Repo.Config()
 	if err != nil {
@@ -188,14 +188,14 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 		return err
 	}
 
-	mounts := []bstore.Mount{{fsrepo.CacheMount, cbs}}
+	var mbs bstore.Blockstore = cbs
 
 	if n.Repo.DirectMount(fsrepo.FilestoreMount) != nil {
 		fs := bstore.NewBlockstoreWPrefix(n.Repo.Datastore(), fsrepo.FilestoreMount)
-		mounts = append(mounts, bstore.Mount{fsrepo.FilestoreMount, fs})
+		mbs = filestore_support.NewMultiBlockstore(cbs, fs)
 	}
 
-	n.Blockstore = bstore.NewMultiBlockstore(mounts...)
+	n.Blockstore = bstore.NewGCBlockstore(mbs, bstore.NewGCLocker())
 
 	rcfg, err := n.Repo.Config()
 	if err != nil {
