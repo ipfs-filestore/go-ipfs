@@ -254,115 +254,12 @@ type KeyVal struct {
 	Val *DataObj
 }
 
-func (d *Datastore) GetAll(k *DbKey) ([]KeyVal, error) {
-	//println("GetAll:", k.Format())
-	hash := k.HashOnly()
-	dataObj, err := d.db.GetHash(hash.Bytes)
-	if err == leveldb.ErrNotFound {
-		return nil, ds.ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	//println("GetAll", k.Format(), "finding matches...")
-	var res []KeyVal
-	if haveMatch(k, dataObj) {
-		//println("GetAll match <0>", hash.Format(), k.Format())
-		res = append(res, KeyVal{hash, dataObj})
-	}
-	itr := d.db.GetAlternatives(hash.Bytes)
-	for itr.Next() {
-		dataObj, err = itr.Value()
-		if err != nil {
-			return nil, err
-		}
-		//println("GetAll match ???", itr.Key().Format())
-		if haveMatch(k, dataObj) {
-			//println("GetAll match <1>", itr.Key().Format(), k.Format())
-			res = append(res, KeyVal{itr.Key(), dataObj})
-		}
-	}
-	return res, nil
-}
-
-func haveMatch(k *DbKey, dataObj *DataObj) bool {
-	return ((k.FilePath == "" || k.FilePath == dataObj.FilePath) &&
-		(k.Offset == -1 || uint64(k.Offset) == dataObj.Offset))
-}
-
 type IsPinned int
 
 const (
 	NotPinned   = 1
 	MaybePinned = 2
 )
-
-var RequirePinCheck = errors.New("Will delete last DataObj for hash, pin check required.")
-
-// Delete a single DataObj
-// FIXME: Needs testing!
-func (d *Datastore) DelSingle(key *DbKey, isPinned IsPinned) error {
-	if key.FilePath != "" {
-		return d.DelDirect(key, isPinned)
-	}
-	d.updateLock.Lock()
-	defer d.updateLock.Unlock()
-	found, err := d.db.Has(key)
-	if err != nil {
-		return err
-	} else if !found {
-		return ds.ErrNotFound
-	}
-
-	return d.doDelete(key, isPinned)
-}
-
-// Directly delete a single DataObj based on the full key
-// FIXME: Needs testing!
-func (d *Datastore) DelDirect(key *DbKey, isPinned IsPinned) error {
-	if key.FilePath == "" && key.Offset == -1 {
-		panic("Cannot delete with hash only key")
-		return errors.New("Cannot delete with hash only key")
-	}
-	d.updateLock.Lock()
-	defer d.updateLock.Unlock()
-	found, err := d.db.Has(key)
-	if err != nil {
-		return err
-	}
-	if found {
-		return d.db.Delete(key.Bytes)
-	}
-	hash := NewDbKey(key.Hash, "", -1, nil)
-
-	_, _, err = d.getIndirect(hash, key)
-	if err != nil {
-		return err
-	}
-
-	return d.doDelete(hash, isPinned)
-}
-
-func (d *Datastore) doDelete(hash *DbKey, isPinned IsPinned) error {
-	itr := d.db.GetAlternatives(hash.Bytes)
-	haveAlt := itr.Next()
-
-	if isPinned == MaybePinned && !haveAlt {
-		return RequirePinCheck
-	}
-
-	batch := NewBatch()
-
-	batch.Delete(hash.Bytes)
-	if haveAlt {
-		val, err := itr.Value()
-		if err != nil {
-			return err
-		}
-		batch.Put(hash, val)
-		batch.Delete(itr.Key().Bytes)
-	}
-	return d.db.Write(batch)
-}
 
 func (d *Datastore) Update(key *DbKey, val *DataObj) {
 	if key.FilePath == "" {
@@ -378,41 +275,6 @@ func (d *Datastore) Update(key *DbKey, val *DataObj) {
 }
 
 var InvalidBlock = errors.New("filestore: block verification failed")
-var TouchedBlock = errors.New("filestore: modtimes differ, contents may be invalid")
-
-// Verify as much as possible without opening the file, the result is
-// a best guess.
-func VerifyFast(val *DataObj) error {
-	// There is backing file, nothing to check
-	if val.HaveBlockData() {
-		return nil
-	}
-
-	// get the file's metadata, return on error
-	fileInfo, err := os.Stat(val.FilePath)
-	if err != nil {
-		return err
-	}
-
-	// the file has shrunk, the block invalid
-	if val.Offset+val.Size > uint64(fileInfo.Size()) {
-		return InvalidBlock
-	}
-
-	// the file mtime has changes, the block is _likely_ invalid
-	modtime := FromTime(fileInfo.ModTime())
-	if modtime != val.ModTime {
-		return TouchedBlock
-	}
-
-	// block already marked invalid
-	if val.Invalid() {
-		return InvalidBlock
-	}
-
-	// the block _seams_ ok
-	return nil
-}
 
 // Get the orignal data out of the DataObj
 func GetData(d *Datastore, key *DbKey, val *DataObj, verify VerifyWhen) ([]byte, error) {
