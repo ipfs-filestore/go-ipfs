@@ -147,7 +147,7 @@ up a small amount of space.
 
 ## Pinning and removing blocks manually.
 
-Filestore blocks are never garage collected and hence filestore blocks
+Filestore blocks are never garbage collected and hence filestore blocks
 are not pinned by default when added.  If you add a directory it will
 also not be pinned (as that will indirectly pin filestore objects) and
 hence the directory object might be garbage collected as it is not
